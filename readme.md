@@ -7,7 +7,7 @@ INAV-Radar is an addition to the [INAV](https://github.com/iNavFlight/inav) flig
 This fork is continuing the improvements on the source.
 
 [![Video](https://github.com/mistyk/inavradar-ESP32/raw/master/docs/video.png)](https://www.youtube.com/watch?v=7ww0YOGN7F0)
-[![Video](https://github.com/Pairan/ESP32-INAV-Radar/raw/master/docs/inav-radar-teaser.png)](https://youtu.be/7XJ1eJVgmeg)
+[![Video](https://github.com/Pairan/ESP32-INAV-Radar/raw/master/assets/inav-radar-teaser.png)](https://youtu.be/7XJ1eJVgmeg)
 
 
 
