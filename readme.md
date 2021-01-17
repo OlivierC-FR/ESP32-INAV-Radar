@@ -16,7 +16,6 @@ This fork is continuing the improvements on the source.
 RCgroups thread: [INAV-Radar on RCgroups](https://www.rcgroups.com/forums/showthread.php?3304673-iNav-Radar-ESP32-LoRa-modems)
 
 *** 1.5.1 (2020/12/04)
-- Forked to this repo by Olivier-C as he maintained the code so far
 - Wait for the host to reply for 9 secondes instead of 4, to account for INAV 2.6 slower boot
 
 *** 1.50 (2020/02/11)
