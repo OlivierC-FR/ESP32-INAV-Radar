@@ -141,51 +141,46 @@ void resync_tx_slot(int16_t delay) {
 // ----------------------------------------------------------------------------- calc gps distance
 
 double deg2rad(double deg) {
-  return (deg * M_PI / 180);
+    return (deg * M_PI / 180);
 }
 
 double rad2deg(double rad) {
-  return (rad * 180 / M_PI);
+    return (rad * 180 / M_PI);
 }
 
 double gpsDistanceBetween(double lat1d, double lon1d, double lat2d, double lon2d) {
-  double lat1r, lon1r, lat2r, lon2r, u, v;
-  lat1r = deg2rad(lat1d);
-  lon1r = deg2rad(lon1d);
-  lat2r = deg2rad(lat2d);
-  lon2r = deg2rad(lon2d);
-  u = sin((lat2r - lat1r)/2);
-  v = sin((lon2r - lon1r)/2);
-  return 2.0 * 6371000 * asin(sqrt(u * u + cos(lat1r) * cos(lat2r) * v * v));
+    double lat1r, lon1r, lat2r, lon2r, u, v;
+    lat1r = deg2rad(lat1d);
+    lon1r = deg2rad(lon1d);
+    lat2r = deg2rad(lat2d);
+    lon2r = deg2rad(lon2d);
+    u = sin((lat2r - lat1r)/2);
+    v = sin((lon2r - lon1r)/2);
+    return 2.0 * 6371000 * asin(sqrt(u * u + cos(lat1r) * cos(lat2r) * v * v));
 }
 
-
-double gpsCourseTo(double lat1, double long1, double lat2, double long2)
-{
-  // returns course in degrees (North=0, West=270) from position 1 to position 2,
-  // both specified as signed decimal-degrees latitude and longitude.
-  // Because Earth is no exact sphere, calculated course may be off by a tiny fraction.
-  // Courtesy of Maarten Lamers
-  double dlon = radians(long2-long1);
-  lat1 = radians(lat1);
-  lat2 = radians(lat2);
-  double a1 = sin(dlon) * cos(lat2);
-  double a2 = sin(lat1) * cos(lat2) * cos(dlon);
-  a2 = cos(lat1) * sin(lat2) - a2;
-  a2 = atan2(a1, a2);
-  if (a2 < 0.0)
-  {
-    a2 += TWO_PI;
-  }
-  return degrees(a2);
+double gpsCourseTo(double lat1, double long1, double lat2, double long2) {
+    // returns course in degrees (North=0, West=270) from position 1 to position 2,
+    // both specified as signed decimal-degrees latitude and longitude.
+    // Because Earth is no exact sphere, calculated course may be off by a tiny fraction.
+    // Courtesy of Maarten Lamers
+    double dlon = radians(long2-long1);
+    lat1 = radians(lat1);
+    lat2 = radians(lat2);
+    double a1 = sin(dlon) * cos(lat2);
+    double a2 = sin(lat1) * cos(lat2) * cos(dlon);
+    a2 = cos(lat1) * sin(lat2) - a2;
+    a2 = atan2(a1, a2);
+    if (a2 < 0.0) {
+        a2 += TWO_PI;
+    }
+return degrees(a2);
 }
 
 // -------- LoRa
 
 void lora_send() {
-
     if (sys.lora_tick % 8 == 0) {
-
         if (sys.lora_tick % 16 == 0) {
             air_3.id = curr.id;
             air_3.type = 3;
@@ -210,7 +205,7 @@ void lora_send() {
             while (!LoRa.beginPacket()) {  }
             LoRa.write((uint8_t*)&air_2, sizeof(air_2));
             LoRa.endPacket(false);
-            }
+        }
     }
     else {
         if (sys.lora_tick % 2 == 0) {
@@ -363,21 +358,16 @@ void display_draw() {
         display.drawString(26, 11, String(curr.gps.numSat));
         display.drawString(13, 42, String(sys.num_peers_active + 1));
         display.drawString (125, 11, String(peer_slotname[curr.id]));
-
         display.setFont(ArialMT_Plain_10);
-
         display.drawString (126, 29, "_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ");
         display.drawString (107, 44, String(stats.percent_received));
         display.drawString(107, 54, String(sys.last_rssi));
-
         display.setTextAlignment (TEXT_ALIGN_CENTER);
         display.drawString (64, 0, String(sys.message));
-
         display.setTextAlignment (TEXT_ALIGN_LEFT);
         display.drawString (55, 12, String(curr.name));
         display.drawString (27, 23, "SAT");
         display.drawString (108, 44, "%E");
-
         display.drawString(21, 54, String(sys.pps) + "p/s");
         display.drawString (109, 54, "dB");
         display.drawString (55, 23, String(host_name[curr.host]));
@@ -490,7 +480,6 @@ void display_draw() {
         display.setFont(ArialMT_Plain_24);
         display.setTextAlignment (TEXT_ALIGN_LEFT);
         display.drawString (0, 0, String(peer_slotname[i + 1]));
-
         display.setFont(ArialMT_Plain_16);
         display.setTextAlignment(TEXT_ALIGN_RIGHT);
 
@@ -557,7 +546,6 @@ void display_draw() {
 
                 if (peers[i].gps.lat != 0 && peers[i].gps.lon != 0 && curr.gps.lat != 0 && curr.gps.lon != 0 && !iscurrent) {
 
-
                     double lat1 = curr.gps.lat / 10000000;
                     double lon1 = curr.gps.lon / 10000000;
                     double lat2 = peers[i].gpsrec.lat / 10000000;
@@ -588,16 +576,14 @@ void display_draw() {
             display.drawString (35, 7, "SLOT IS EMPTY");
             sys.display_page++;
         }
-
     }
-
     display.display();
 }
 
 void display_logo() {
     display.drawXbm(0, 0, LOGO_WIDTH, LOGO_HEIGHT, logo_bits_s);
     display.display();
-    delay(1200);
+    delay(1000);
     display.clear();
 }
 
@@ -633,10 +619,10 @@ void msp_set_fc() {
     if (curr.host == HOST_INAV || curr.host == HOST_BTFL) {
         msp.request(MSP_FC_VERSION, &curr.fcversion, sizeof(curr.fcversion));
     }
- }
+}
 
  void msp_get_fcanalog() {
-  msp.request(MSP_ANALOG, &curr.fcanalog, sizeof(curr.fcanalog));
+    msp.request(MSP_ANALOG, &curr.fcanalog, sizeof(curr.fcanalog));
 }
 
 void msp_send_radar(uint8_t i) {
@@ -649,7 +635,6 @@ void msp_send_radar(uint8_t i) {
     radarPos.speed = peers[i].gps.groundSpeed; // cm/s
     radarPos.lq = peers[i].lq;
     msp.command2(MSP2_COMMON_SET_RADAR_POS , &radarPos, sizeof(radarPos), 0);
-//    msp.command(MSP_SET_RADAR_POS , &radarPos, sizeof(radarPos), 0);
 }
 
 void msp_send_peers() {
@@ -696,7 +681,6 @@ void IRAM_ATTR handleInterrupt() {
     portEXIT_CRITICAL_ISR(&mux);
 }
 
-
 // ----------------------------- setup
 
 void setup() {
@@ -726,7 +710,7 @@ void setup() {
     sys.io_button_pressed = 0;
     attachInterrupt(digitalPinToInterrupt(interruptPin), handleInterrupt, RISING);
 
-/*
+    /*
     sys.display_updated = 0;
     sys.menu_line = CFG_PROFILE_DEFAULT;
     sys.menu_line = 1; // ---------------------
@@ -738,7 +722,11 @@ void setup() {
 
     if (cfg.display_enable) {
         display.clear();
-        display.drawString(0, 0, "RADAR VERSION " + String(VERSION));
+        display.setFont(ArialMT_Plain_10);
+        display.drawString(0, 0, "RADAR VERSION ");
+        display.setFont(ArialMT_Plain_16);
+        display.drawString(100, 0, String(VERSION));
+        display.setFont(ArialMT_Plain_10);        
         display.drawString(0, 9, "PROFILE " + String(cfg.profile_id) + " " + String(cfg.profile_name));
         display.drawString(0, 18, "HOST");
         display.display();
@@ -746,10 +734,8 @@ void setup() {
 
     sys.cycle_scan_begin = millis();
     sys.now = millis();
-
     curr.host = HOST_NONE;
     sys.phase = MODE_HOST_SCAN;
-
 }
 
 // ----------------------------------------------------------------------------- MAIN LOOP
@@ -779,47 +765,44 @@ void loop() {
                 for (int i = 0; i < 4; i++) {
                 curr.name[i] = (char) random(65, 90);
                 curr.name[4] = 0;
-                }
             }
+        }
 
-            curr.gps.fixType = 0;
-            curr.gps.lat = 0;
-            curr.gps.lon = 0;
-            curr.gps.alt = 0;
-            curr.id = 0;
+        curr.gps.fixType = 0;
+        curr.gps.lat = 0;
+        curr.gps.lon = 0;
+        curr.gps.alt = 0;
+        curr.id = 0;
 
-            LoRa.sleep();
-            LoRa.receive();
+        LoRa.sleep();
+        LoRa.receive();
 
         if (cfg.display_enable) {
             if (curr.host > 0) {
                 display.drawString (35, 18, String(host_name[curr.host]) + " " + String(curr.fcversion.versionMajor) + "."  + String(curr.fcversion.versionMinor) + "." + String(curr.fcversion.versionPatchLevel));
-                 display.drawString (0, 27, "SERIAL SPD "+ String(SERIAL_SPEED));
-            }
-            else {
+                display.drawString (0, 27, "SERIAL SPD "+ String(SERIAL_SPEED));
+            } else {
                 display.drawString (35, 18, String(host_name[curr.host]));
             }
 
-            display.drawProgressBar(0, 53, 40, 6, 100);
+            display.drawProgressBar(0, 51, 40, 8, 100);
             display.drawString (0, 36, "SCAN");
             display.display();
-
         }
 
-            sys.cycle_scan_begin = millis();
-            sys.phase = MODE_LORA_INIT;
+        sys.cycle_scan_begin = millis();
+        sys.phase = MODE_LORA_INIT;
 
-        } else { // Still scanning
+        }
+        else { // Still scanning
             if (sys.now > sys.display_updated + DISPLAY_CYCLE / 2) {
-
-                delay(50);
-
+                delay(100);
                 msp_set_fc();
 
-        if (cfg.display_enable) {
-                display.drawProgressBar(0, 53, 40, 6, 100 * (millis() - sys.cycle_scan_begin) / HOST_MSP_TIMEOUT);
-                display.display();
-        }
+                if (cfg.display_enable) {
+                    display.drawProgressBar(0, 53, 40, 6, 100 * (millis() - sys.cycle_scan_begin) / HOST_MSP_TIMEOUT);
+                    display.display();
+                }
                 sys.display_updated = millis();
             }
         }
@@ -832,27 +815,24 @@ void loop() {
         if (sys.now > (sys.cycle_scan_begin + LORA_CYCLE_SCAN)) {  // End of the scan, set the ID then sync
 
             sys.num_peers = count_peers();
-
             if (sys.num_peers >= cfg.lora_nodes_max) { // Too many nodes already, go silent mode
                 sys.lora_no_tx = 1;
-            }
-            else {
+            } else {
                 pick_id();
             }
             sys.display_page = 0;
             sys.phase = MODE_LORA_SYNC;
-
-        } else { // Still scanning
+        } 
+        else { // Still scanning
 
             if (sys.now > sys.display_updated + DISPLAY_CYCLE / 2 && cfg.display_enable) {
                 for (int i = 0; i < cfg.lora_nodes_max; i++) {
                     if (peers[i].id > 0) {
-                        display.drawString(40 + peers[i].id * 8, 27, String(peer_slotname[peers[i].id]));
+                        display.drawString(40 + peers[i].id * 8, 36, String(peer_slotname[peers[i].id]));
                     }
                 }
-                display.drawProgressBar(40, 53, 86, 6, 100 * (millis() - sys.cycle_scan_begin) / LORA_CYCLE_SCAN);
+                display.drawProgressBar(40, 51, 86, 8, 100 * (millis() - sys.cycle_scan_begin) / LORA_CYCLE_SCAN);
                 display.display();
-
                 sys.display_updated = millis();
             }
         delay(20);
@@ -863,15 +843,15 @@ void loop() {
 
     if (sys.phase == MODE_LORA_SYNC) {
 
-        if (sys.num_peers == 0 || sys.lora_no_tx) { // Alone or no_tx mode, no need to sync
+        if (sys.num_peers == 0 || sys.lora_no_tx) { // Alone or Silent mode, no need to sync
             sys.lora_next_tx = millis() + sys.lora_cycle;
             }
         else { // Not alone, sync by slot
             resync_tx_slot(cfg.lora_timing_delay);
         }
+
         sys.display_updated = sys.lora_next_tx + sys.lora_cycle - 30;
         sys.stats_updated = sys.lora_next_tx + sys.lora_cycle - 15;
-
         sys.pps = 0;
         sys.ppsc = 0;
         sys.num_peers = 0;
@@ -879,9 +859,8 @@ void loop() {
         stats.packets_received = 0;
         stats.percent_received = 0;
         digitalWrite(IO_LED_PIN, LOW);
-
         sys.phase = MODE_LORA_RX;
-        }
+    }
 
 // ---------------------- LORA RX
 
@@ -897,7 +876,7 @@ void loop() {
         else {
             if (sys.num_peers == 0) {
                 sys.lora_next_tx += random(0, 2) * cfg.lora_slot_spacing;
-                }
+            }
             sys.phase = MODE_LORA_TX;
         }
     sys.lora_tick++;
@@ -941,14 +920,12 @@ void loop() {
 
         LoRa.sleep();
         LoRa.receive();
-
         sys.phase = MODE_LORA_RX;
     }
 
 // ---------------------- DISPLAY
 
     if ((sys.now > sys.display_updated + DISPLAY_CYCLE) && sys.display_enable && (sys.phase > MODE_LORA_SYNC) && cfg.display_enable) {
-
         stats.timer_begin = millis();
 
         if (sys.num_peers == 0 && sys.display_page == 1)  { // No need for timings graphs when alone
@@ -960,9 +937,7 @@ void loop() {
         }
 
         display_draw();
-
         sys.message[0] = 0;
-
         stats.last_oled_duration = millis() - stats.timer_begin;
         sys.display_updated = sys.now;
     }
@@ -970,7 +945,6 @@ void loop() {
 // ---------------------- SERIAL / MSP
 
     if (sys.now > sys.msp_next_cycle && curr.host != HOST_NONE && sys.phase > MODE_LORA_SYNC && sys.lora_slot < cfg.lora_nodes_max) {
-
         stats.timer_begin = millis();
 
         if (sys.lora_slot == 0) {
@@ -987,12 +961,10 @@ void loop() {
 
         msp_get_gps(); // GPS > FC > ESP
         msp_send_peer(sys.lora_slot); // ESP > FC > OSD
-
         stats.last_msp_duration[sys.lora_slot] = millis() - stats.timer_begin;
         sys.msp_next_cycle += cfg.lora_slot_spacing;
         sys.lora_slot++;
     }
-
 
 // ---------------------- STATISTICS & IO
 
@@ -1022,7 +994,6 @@ void loop() {
         }
 
         sys.num_peers_active = count_peers(1);
-
         stats.packets_total += sys.num_peers_active * sys.cycle_stats / sys.lora_cycle;
         stats.packets_received += sys.pps;
         stats.percent_received = (stats.packets_received > 0) ? constrain(100 * stats.packets_received / stats.packets_total, 0 ,100) : 0;
@@ -1033,15 +1004,12 @@ void loop() {
             display.displayOn();
             sys.display_enable = 1;
         }
-
         else if (curr.state && sys.display_enable) { // Aircraft is armed = Turning off the OLED
             display.displayOff();
             sys.display_enable = 0;
         }
-
     sys.stats_updated = sys.now;
     }
-
 
     // LED blinker
 

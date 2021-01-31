@@ -4,62 +4,50 @@
 
 INAV-Radar is an addition to the [INAV](https://github.com/iNavFlight/inav) flight control software, it relays information about UAVs in the area to the flight controller for display on the OSD. INAV-Radar does this by using [LoRa](https://en.wikipedia.org/wiki/LoRa) radio to broadcast position, altitude, speed and plane name. It also listens for other UAVs so INAV OSD  can display this information as a HUD.
 
-This fork is continuing the improvements on the source.
-
 [![Video](https://github.com/mistyk/inavradar-ESP32/raw/master/docs/video.png)](https://www.youtube.com/watch?v=7ww0YOGN7F0)
 [![Video](https://github.com/Pairan/ESP32-INAV-Radar/raw/master/assets/inav-radar-teaser.png)](https://youtu.be/7XJ1eJVgmeg)
-
-
 
 ## News
 
 RCgroups thread: [INAV-Radar on RCgroups](https://www.rcgroups.com/forums/showthread.php?3304673-iNav-Radar-ESP32-LoRa-modems)
 
+*** 1.6 (2021/01/31)
+Improved range, and minor optimizations (require all nodes to have 1.6, because new LoRa settings)
+
 *** 1.5.1 (2020/12/04)
-- Wait for the host to reply for 9 secondes instead of 4, to account for INAV 2.6 slower boot
+Wait for the host to reply for 9 secondes instead of 4, to account for INAV 2.6 slower boot
 
 *** 1.50 (2020/02/11)
-- Improved timings for better out-of-range resistance (4 slots of 150ms = total cycle 600ms)
-- Code cleanup
+Improved timings for better out-of-range resistance (4 slots of 150ms = total cycle 600ms)
+Code cleanup
 
 *** 1.30 (2019/05/18)
-
-    Radar logo at boot
-    Better timings, greatly reduced display latency
-    Many cosmetic tweaks and fixes
-    Newest inav 2.2.dev REQUIRED (built 2019/05/18 or newer)
-
+Radar logo at boot
+Better timings, greatly reduced display latency
+Many cosmetic tweaks and fixes
+Newest inav 2.2.dev REQUIRED (built 2019/05/18 or newer)
 
 *** 1.20 (2019/05/14)
-
-    Better timing for MSP and air packets
-    5 nodes capable, but locked at 4 nodes for now
-    Faster rate for MSP messages to improve tracking accuracy
-    in iNav 2.2, faster display to reduce tracking stuttering
-    Known issue : sometime the debug page with the timings
-    reboots the module
-
+Better timing for MSP and air packets
+5 nodes capable, but locked at 4 nodes for now
+Faster rate for MSP messages to improve tracking accuracy
+in iNav 2.2, faster display to reduce tracking stuttering
+Known issue : sometime the debug page with the timings
+reboots the module
 
 *** 1.01 (2019/05/06)
-
-    - More detailled screens per nodes
-    - Displays the local vbat and mAh. These datas are not yet
-      transmitted to the other nodes.
-    - Pressing the top button during the boot sequence will put
-      the module in "silent" mode (ground-station), it will only
-      receive, and won't transmit, thus freeing a slot. Button
-      must be pressed at least once, between the time the module
-      is plugged and the end of the SCAN progress bar.
-    - No need to update iNav since 1.00, no changes.
+More detailled screens per nodes
+Displays the local vbat and mAh. These datas are not yet transmitted to the other nodes.
+Pressing the top button during the boot sequence will put the module in "silent" mode (ground-station), it will only receive, and won't transmit, thus freeing a slot. Button must be pressed at least once, between the time the module is plugged and the end of the SCAN progress bar.
+No need to update iNav since 1.00, no changes.
 
 *** 1.00 (2019/04/25)
+Initial release
+Require iNav 2.2-dev, including the latest version for the Hud branch (build date 2019/04/27 or newer)
+Cycle time 500ms, slotspacing 125ms, LoRA SF9 bw250, maximum 4 nodes (you + 3 others)
 
-    - Initial release
-    - Require iNav 2.2-dev, including the latest version for the
-      Hud branch (build date 2019/04/27 or newer)
-    - Cycle time 500ms, slotspacing 125ms, LoRA SF9 bw250,
-      maximum 4 nodes (you + 3 others)
 ## Index
+
 [Hardware](#hardware)
 
 [Development](#development)
@@ -69,8 +57,6 @@ RCgroups thread: [INAV-Radar on RCgroups](https://www.rcgroups.com/forums/showth
 [Wireing](#Wireing)
 
 [FC settings](#FC-settings)
-
-[ESP32 commands](#commands)
 
 [Manual flashing ESP](#manual)
 
@@ -92,17 +78,13 @@ Also please keep track of your countries regulations regarding radio transmissio
 
 ## Development
 
-Everything here is WORK IN PROGRESS!
-
 The software is based on two components:
 - ESP32 LoRa part is found in this repo.
 It's developed using [PlatformIO](https://platformio.org/) plugin for [Atom](https://atom.io/) editor.
-- INAV OSD part repo is found [here](https://github.com/OlivierC-FR/inav/tree/oc_hud).
-It's a fork from the INAV repo and instructions how to build can be found [here](https://github.com/iNavFlight/inav/blob/master/docs/development/Building%20in%20Docker.md).
-
-INAV-Radar is a experimental firmware based on INAV and soon will become a part of the INAV flight control software. INAV repo can be found [here](https://github.com/iNavFlight/inav).
+- INAV : https://github.com/iNavFlight/inav.
 
 ## ESP32 firmware flashing
+
 Your system may needs the driver for the USB UART bridge:
 [Windows+MacOS](https://www.silabs.com/products/development-tools/software/usb-to-uart-bridge-vcp-drivers)
  or [Alternative MacOS](https://github.com/adrianmihalko/ch340g-ch34g-ch34x-mac-os-x-driver)
@@ -152,15 +134,11 @@ To connect the ESP32 to the FC:
 - TX from FC to ESP RX pin 17
 - RX from FC to ESP TX pin 23
 
-
-## FC settings
-Dump your backup back into the cli.
+## FC settings (INAV configurator)
 
 Activate MSP on the corresponding UART, the speed is 115200. This is important as the LoRa-modules need this speed for communicating with the fc at that speed for a usable response on changes.
 
 Enable the crosshair.
-
-Please also flash the extra Vision OSD fonts for signal strenth and the homing crosshair. Vision 1 is small/light, Vision 4 is heavy/bold.
 
 The HUD has an entry in the stick menu (OSD->HUD) where you can change this configuration at runtime.
 
@@ -190,33 +168,6 @@ set osd_hud_radar_range_max = 4000
 
 [INAV-Radar on RCgroups](https://www.rcgroups.com/forums/showthread.php?3304673-iNav-Radar-ESP32-LoRa-modems)
 
-[Patreon](https://www.patreon.com/inavradar)
 
-## Commands
-
-!!! COMMANDS ARE DISABLED IN CURRENT VERSION !!!
-
-```
-================= Commands =================
-status                  - Show whats going on
-help                    - List all commands
-config                  - List all settings
-config loraFreq n       - Set frequency in Hz (e.g. n = 433000000)
-config loraBandwidth n  - Set bandwidth in Hz (e.g. n = 250000)
-config loraSpread n     - Set SF (e.g. n = 7)
-config uavtimeout n     - Set UAV timeout in sec (e.g. n = 10)
-config fctimeout n      - Set FC timeout in sec (e.g. n = 5)
-config debuglat n       - Set debug GPS lat * 10000000 (e.g. n = 501004900)
-config debuglon n       - Set debug GPS lon * 10000000 (e.g. n = 87632280)
-reboot                  - Reset MCU and radio
-gpspos                  - Show last GPS position
-debug                   - Toggle debug output
-localfakeplanes         - Send fake plane to FC
-lfp                     - Send fake plane to FC
-radiofakeplanes         - Send fake plane via radio
-rfp                     - Send fake plane via radio
-movefakeplanes          - Move fake plane
-mfp                     - Move fake plane
-```
 
 
