@@ -8,6 +8,7 @@
 #include <pixel.h>
 #include <math.h>
 #include <cmath>
+#include "BluetoothSerial.h"
 
 #define M_PI 3.14159265358979323846
 
@@ -24,19 +25,14 @@ curr_t curr;
 peer_t peers[LORA_NODES_MAX];
 
 air_type0_t air_0;
-air_type1_t air_1;
-air_type2_t air_2;
-air_type3_t air_3;
 
-air_type1_t * air_r1;
-air_type2_t * air_r2;
-air_type3_t * air_r3;
-
-char host_name[3][5]={"NoFC", "iNav", "Beta"};
+char host_name[3][5]={"NoFC", "GCS", "INAV"};
 char host_state[2][5]={"", "ARM"};
 char peer_slotname[9][3]={"X", "A", "B", "C", "D", "E", "F", "G", "H"};
 
 SSD1306 display(0x3c, 4, 15);
+
+BluetoothSerial SerialBT;
 
 // -------- EEPROM / CONFIG
 
@@ -130,7 +126,7 @@ void pick_id() {
 
 void resync_tx_slot(int16_t delay) {
     bool startnow = 0;
-    for (int i = 0; (i < cfg.lora_nodes_max) && (startnow == 0); i++) { // Resync
+    for (int i = 0; (i < cfg.lora_nodes_max) && (startnow == 0); i++) {
         if (peers[i].id > 0) {
             sys.lora_next_tx = peers[i].updated + (curr.id - peers[i].id) * cfg.lora_slot_spacing + sys.lora_cycle + delay;
             startnow = 1;
@@ -162,8 +158,6 @@ double gpsDistanceBetween(double lat1d, double lon1d, double lat2d, double lon2d
 double gpsCourseTo(double lat1, double long1, double lat2, double long2) {
     // returns course in degrees (North=0, West=270) from position 1 to position 2,
     // both specified as signed decimal-degrees latitude and longitude.
-    // Because Earth is no exact sphere, calculated course may be off by a tiny fraction.
-    // Courtesy of Maarten Lamers
     double dlon = radians(long2-long1);
     lat1 = radians(lat1);
     lat2 = radians(lat2);
@@ -180,60 +174,48 @@ return degrees(a2);
 // -------- LoRa
 
 void lora_send() {
-    if (sys.lora_tick % 8 == 0) {
-        if (sys.lora_tick % 16 == 0) {
-            air_3.id = curr.id;
-            air_3.type = 3;
-            air_3.vbat = curr.fcanalog.vbat; // 1 to 255 (V x 10)
-            air_3.mah = curr.fcanalog.mAhDrawn;
-            air_3.rssi = curr.fcanalog.rssi; // 0 to 1023
-            air_3.temp1 = 0;
-            air_3.temp2 = 0;
 
-            while (!LoRa.beginPacket()) {  }
-            LoRa.write((uint8_t*)&air_3, sizeof(air_3));
-            LoRa.endPacket(false);
-        }
-        else {
-            air_2.id = curr.id;
-            air_2.type = 2;
-            air_2.host = curr.host;
-            air_2.state = curr.state;
-            strncpy(air_2.name, curr.name, LORA_NAME_LENGTH);
-            air_2.temp1 = 0;
+    air_0.id = curr.id;
+    double lat_dec = (double)curr.gps.lat / 10000000;
+    double lon_dec = (double)curr.gps.lon / 10000000;
+    int lat_inpart = (int) lat_dec; 
+    int lon_inpart = (int) lon_dec;
+    double lat_cal = (lat_dec - lat_inpart) * 100000;
+    double lon_cal = (lon_dec - lon_inpart) * 100000;
+    air_0.lat = (int) lat_cal;
+    air_0.lon = (int) lon_cal;
+    air_0.alt = curr.gps.alt; // m
+    air_0.heading = curr.gps.groundCourse / 60 ;  // From degres x 10 to degres then /6
 
-            while (!LoRa.beginPacket()) {  }
-            LoRa.write((uint8_t*)&air_2, sizeof(air_2));
-            LoRa.endPacket(false);
-        }
-    }
-    else {
-        if (sys.lora_tick % 2 == 0) {
-            air_0.id = curr.id;
-            air_0.type = 0;
-            air_0.lat = curr.gps.lat / 100; // From XX.1234567 to XX.12345
-            air_0.lon = curr.gps.lon / 100; // From XX.1234567 to XX.12345
-            air_0.alt = curr.gps.alt; // m
-            air_0.heading = curr.gps.groundCourse / 10;  // From degres x 10 to degres
+    air_0.extra_type = sys.lora_tick % 6;
 
-            while (!LoRa.beginPacket()) {  }
-            LoRa.write((uint8_t*)&air_0, sizeof(air_0));
-            LoRa.endPacket(false);
-        }
-        else {
-            air_1.id = curr.id;
-            air_1.type = 1;
-            air_1.lat = curr.gps.lat / 100; // From XX.1234567 to XX.12345
-            air_1.lon = curr.gps.lon / 100; // From XX.1234567 to XX.12345
-            air_1.alt = curr.gps.alt; // m
-            air_1.speed = curr.gps.groundSpeed / 100; // From cm/s to m/s
-            air_1.broadcast = 0;
+    switch (air_0.extra_type)
+        {
+        case 0 : air_0.extra_value = lat_inpart;
+        break;
 
-            while (!LoRa.beginPacket()) {  }
-            LoRa.write((uint8_t*)&air_1, sizeof(air_1));
-            LoRa.endPacket(false);
+        case 1 : air_0.extra_value = lon_inpart;
+        break;
+
+        case 2 : air_0.extra_value = curr.gps.groundSpeed / 50;
+        break;
+
+        case 3 : air_0.extra_value = curr.name[0];
+        break;
+
+        case 4 : air_0.extra_value = curr.name[1];
+        break;
+
+        case 5 : air_0.extra_value = curr.name[2];
+        break;   
+
+        default:
+        break;
         }
-    }
+
+    while (!LoRa.beginPacket()) {  }
+    LoRa.write((uint8_t*)&air_0, sizeof(air_0));
+    LoRa.endPacket(false);
 }
 
 void lora_receive(int packetSize) {
@@ -242,13 +224,20 @@ void lora_receive(int packetSize) {
 
     sys.lora_last_rx = millis();
     sys.lora_last_rx -= (stats.last_tx_duration > 0 ) ? stats.last_tx_duration : 0; // RX time is the same as TX time
-
     sys.last_rssi = LoRa.packetRssi();
     sys.ppsc++;
 
     LoRa.readBytes((uint8_t *)&air_0, packetSize);
 
     uint8_t id = air_0.id - 1;
+
+    peers[id].gps_pre.lat = peers[id].gps.lat;
+    peers[id].gps_pre.lon = peers[id].gps.lon;
+    peers[id].gps_pre.alt = peers[id].gps.alt;
+    peers[id].gps_pre.groundCourse = peers[id].gps.groundCourse;
+    peers[id].gps_pre.groundSpeed = peers[id].gps.groundSpeed;  
+    peers[id].gps_pre_updated = peers[id].updated;
+
     sys.air_last_received_id = air_0.id;
     peers[id].id = sys.air_last_received_id;
     peers[id].lq_tick++;
@@ -256,47 +245,50 @@ void lora_receive(int packetSize) {
     peers[id].updated = sys.lora_last_rx;
     peers[id].rssi = sys.last_rssi;
 
-    if (air_0.type == 0) { // Type 0 packet
+    peers[id].gps_lat_flo = air_0.lat * 100;
+    peers[id].gps_lon_flo = air_0.lon * 100;
 
-        peers[id].gps.lat = air_0.lat * 100; // From XX.12345 to XX.1234500
-        peers[id].gps.lon = air_0.lon * 100; // From XX.12345 to XX.1234500
-        peers[id].gps.alt = air_0.alt; // m
-        peers[id].gps.groundCourse = air_0.heading * 10; // From degres to degres x 10
+    peers[id].gps.lat = peers[id].gps_lat_int * 10000000 + peers[id].gps_lat_flo; 
+    peers[id].gps.lon = peers[id].gps_lon_int * 10000000 + peers[id].gps_lon_flo; 
+    peers[id].gps.alt = air_0.alt; // m
+    peers[id].gps.groundCourse = air_0.heading * 60;
+
+    switch (air_0.extra_type)
+        {
+        case 0 : peers[id].gps_lat_int = air_0.extra_value;
+        break;
+
+        case 1 : peers[id].gps_lon_int = air_0.extra_value;
+        break;
+
+        case 2 : peers[id].gps.groundSpeed = air_0.extra_value * 50;
+        break;
+
+        case 3 : peers[id].name[0] = air_0.extra_value;
+        break;
+
+        case 4 : peers[id].name[1] = air_0.extra_value;
+        break;
+
+        case 5 : peers[id].name[2] = air_0.extra_value;
+                 peers[id].name[3] = 0;
+        break;  
+
+        default:
+        break;
+        }
+
+    if (peers[id].gps.lat != 0 && peers[id].gps.lon != 0) {  // Save the last known coordinates
+
+        peers[id].gps_rec.lat = peers[id].gps.lat;
+        peers[id].gps_rec.lon = peers[id].gps.lon;
+        peers[id].gps_rec.alt = peers[id].gps.alt;
+        peers[id].gps_rec.groundCourse = peers[id].gps.groundCourse;
+        peers[id].gps_rec.groundSpeed = peers[id].gps.groundSpeed;
     }
-    else if (air_0.type == 1) { // Type 1 packet
 
-        air_r1 = (air_type1_t*)&air_0;
-
-        peers[id].gps.lat = (*air_r1).lat * 100; // From XX.12345 to XX.1234500
-        peers[id].gps.lon = (*air_r1).lon * 100; // From XX.12345 to XX.1234500
-        peers[id].gps.alt = (*air_r1).alt; // m
-        peers[id].gps.groundSpeed = (*air_r1).speed * 100; // From m/s to cm/s
-        peers[id].broadcast = (*air_r1).broadcast;
-    }
-    else if (air_0.type == 2) { // Type 2 packet
-
-        air_r2 = (air_type2_t*)&air_0;
-
-        peers[id].host = (*air_r2).host;
-        peers[id].state = (*air_r2).state;
-        strncpy(peers[id].name, (*air_r2).name, LORA_NAME_LENGTH);
-        peers[id].name[LORA_NAME_LENGTH] = 0;
-    }
-    else if (air_0.type == 3) { // Type 3 packet
-
-        air_r3 = (air_type3_t*)&air_0;
-
-        peers[id].fcanalog.vbat = (*air_r3).vbat;
-        peers[id].fcanalog.mAhDrawn = (*air_r3).mah;
-        peers[id].fcanalog.rssi = (*air_r3).rssi;
-    }
-
-    if ((air_0.type == 0 || air_0.type == 1) && peers[id].gps.lat != 0 && peers[id].gps.lon != 0 && peers[id].gps.alt != 0) {  // Save the last known coordinates
-        peers[id].gpsrec.lat = peers[id].gps.lat;
-        peers[id].gpsrec.lon = peers[id].gps.lon;
-        peers[id].gpsrec.alt = peers[id].gps.alt;
-        peers[id].gpsrec.groundCourse = peers[id].gps.groundCourse;
-        peers[id].gpsrec.groundSpeed = peers[id].gps.groundSpeed;
+    if (sys.io_bt_enabled) {
+        SerialBT.println((String)"[" + char(id+65) + "] " + peers[id].name + " N" + peers[id].gps.lat + " E"+peers[id].gps.lon+ " "+ peers[id].gps.alt + "m");
     }
 
     sys.num_peers = count_peers();
@@ -359,7 +351,13 @@ void display_draw() {
         display.drawString(13, 42, String(sys.num_peers_active + 1));
         display.drawString (125, 11, String(peer_slotname[curr.id]));
         display.setFont(ArialMT_Plain_10);
-        display.drawString (126, 29, "_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ");
+
+        if (sys.io_bt_enabled) { 
+            display.drawString (126, 29, "_ _ _ _ _ _ _ _ _ _ _ BT _ _ _");
+        }
+        else {
+            display.drawString (126, 29, "_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ");
+        }
         display.drawString (107, 44, String(stats.percent_received));
         display.drawString(107, 54, String(sys.last_rssi));
         display.setTextAlignment (TEXT_ALIGN_CENTER);
@@ -384,6 +382,8 @@ void display_draw() {
 
         if (curr.gps.fixType == 1) display.drawString (27, 12, "2D");
         if (curr.gps.fixType == 2) display.drawString (27, 12, "3D");
+
+
     }
 
     else if (sys.display_page == 1) {
@@ -423,7 +423,6 @@ void display_draw() {
 
                 display.drawString (0, line, String(peer_slotname[peers[i].id]));
                 display.drawString (12, line, String(peers[i].name));
-                display.drawString (60, line, String(host_name[peers[i].host]));
                 display.setTextAlignment (TEXT_ALIGN_RIGHT);
 
                 if (peers[i].lost) { // Peer timed out
@@ -465,7 +464,7 @@ void display_draw() {
 
         display.setTextAlignment(TEXT_ALIGN_RIGHT);
         display.drawString (111, 0, String(stats.last_tx_duration));
-        display.drawString (111, 10, String(stats.last_msp_duration[0]) + " / " + String(stats.last_msp_duration[1]) + " / " + String(stats.last_msp_duration[2]) + " / " + String(stats.last_msp_duration[3]));
+        display.drawString (111, 10, String(stats.last_msp_duration[0]) + " / " + String(stats.last_msp_duration[1]));
         display.drawString (111, 20, String(stats.last_oled_duration));
         display.drawString (111, 30, String(sys.lora_cycle));
         display.drawString (111, 40, String(cfg.lora_nodes_max) + " x " + String(cfg.lora_slot_spacing));
@@ -510,63 +509,57 @@ void display_draw() {
                     if (!peers[i].lost) {
                         display.drawString (28, 0, String(peers[i].rssi) + "db");
                     }
-                    display.drawString (19, 12, String(host_name[peers[i].host]));
                 }
 
                 if (iscurrent) {
                     display.drawString (50, 12, String(host_state[curr.state]));
                 }
-                else {
-                    display.drawString (50, 12, String(host_state[peers[i].state]));
-                }
 
                 display.setTextAlignment (TEXT_ALIGN_RIGHT);
 
                 if (iscurrent) {
-                    display.drawString (128, 24, "LA " + String((float)curr.gps.lat / 10000000, 6));
-                    display.drawString (128, 34, "LO "+ String((float)curr.gps.lon / 10000000, 6));
+                    display.drawString (128, 24, "LA " + String((float)curr.gps.lat / 10000000, 5));
+                    display.drawString (128, 34, "LO "+ String((float)curr.gps.lon / 10000000, 5));
                 }
                 else {
-                    display.drawString (128, 24, "LA " + String((float)peers[i].gpsrec.lat / 10000000, 6));
-                    display.drawString (128, 34, "LO "+ String((float)peers[i].gpsrec.lon / 10000000, 6));
+                    display.drawString (128, 24, "LA " + String((float)peers[i].gps_rec.lat / 10000000, 5));
+                    display.drawString (128, 34, "LO "+ String((float)peers[i].gps_rec.lon / 10000000, 5));
                 }
 
                 display.setTextAlignment (TEXT_ALIGN_LEFT);
 
                 if (iscurrent) {
                     display.drawString (0, 24, "A " + String(curr.gps.alt) + "m");
-                    display.drawString (0, 34, "S " + String(peers[i].gpsrec.groundSpeed / 100) + "m/s");
+                    display.drawString (0, 34, "S " + String(curr.gps.groundSpeed / 100) + "m/s");
                     display.drawString (0, 44, "C " + String(curr.gps.groundCourse / 10) + "°");
                 }
                 else {
-                    display.drawString (0, 24, "A " + String(peers[i].gpsrec.alt) + "m");
-                    display.drawString (0, 34, "S " + String(peers[i].gpsrec.groundSpeed / 100) + "m/s");
-                    display.drawString (0, 44, "C " + String(peers[i].gpsrec.groundCourse / 10) + "°");
+                    display.drawString (0, 24, "A " + String(peers[i].gps_rec.alt) + "m");
+                    display.drawString (0, 34, "S " + String(peers[i].gps_rec.groundSpeed / 100) + "m/s");
+                    display.drawString (0, 44, "C " + String(peers[i].gps_rec.groundCourse / 10) + "°");
                 }
 
                 if (peers[i].gps.lat != 0 && peers[i].gps.lon != 0 && curr.gps.lat != 0 && curr.gps.lon != 0 && !iscurrent) {
 
-                    double lat1 = curr.gps.lat / 10000000;
-                    double lon1 = curr.gps.lon / 10000000;
-                    double lat2 = peers[i].gpsrec.lat / 10000000;
-                    double lon2 = peers[i].gpsrec.lon / 10000000;
+                    double lat1 = (double)curr.gps.lat / 10000000;
+                    double lon1 = (double)curr.gps.lon / 10000000;
+                    double lat2 = (double)peers[i].gps_rec.lat / 10000000;
+                    double lon2 = (double)peers[i].gps_rec.lon / 10000000;
 
                     peers[i].distance = gpsDistanceBetween(lat1, lon1, lat2, lon2);
                     peers[i].direction = gpsCourseTo(lat1, lon1, lat2, lon2);
-                    peers[i].relalt = peers[i].gpsrec.alt - curr.gps.alt;
+                    peers[i].relalt = peers[i].gps_rec.alt - curr.gps.alt;
 
-                    display.drawString (40, 44, "B " + String(peers[i].direction) + "°");
-                    display.drawString (88, 44, "D " + String(peers[i].distance) + "m");
                     display.drawString (0, 54, "R " + String(peers[i].relalt) + "m");
+                    display.drawString (50, 54, "B " + String(peers[i].direction) + "°");
+                    display.setTextAlignment (TEXT_ALIGN_RIGHT);
+                    display.drawString (128, 44, "D " + String((int)peers[i].distance) + "m");
+                    display.setTextAlignment (TEXT_ALIGN_LEFT);
                 }
 
                 if (iscurrent) {
-                    display.drawString (40, 54, String((float)curr.fcanalog.vbat / 10) + "v");
-                    display.drawString (88, 54, String((int)curr.fcanalog.mAhDrawn) + "mah");
-                }
-                else {
-                    display.drawString (40, 54, String((float)peers[i].fcanalog.vbat / 10) + "v");
-                    display.drawString (88, 54, String((int)peers[i].fcanalog.mAhDrawn) + "mah");
+                    display.drawString (0, 54, String((float)curr.fcanalog.vbat / 10) + "v");
+                    display.drawString (50, 54, String((int)curr.fcanalog.mAhDrawn) + "mah");
                 }
 
             display.setTextAlignment (TEXT_ALIGN_RIGHT);
@@ -611,13 +604,11 @@ void msp_set_fc() {
 
     if (strncmp(j, "INAV", 4) == 0) {
         curr.host = HOST_INAV;
-    }
-    else if (strncmp(j, "BTFL", 4) == 0) {
-        curr.host = HOST_BTFL;
-    }
-
-    if (curr.host == HOST_INAV || curr.host == HOST_BTFL) {
         msp.request(MSP_FC_VERSION, &curr.fcversion, sizeof(curr.fcversion));
+    }
+    else if (strncmp(j, "GCS", 3) == 0) {
+        curr.host = HOST_GCS;
+        msp.request(MSP_FC_VERSION, &curr.fcversion, sizeof(curr.fcversion));        
     }
 }
 
@@ -628,21 +619,13 @@ void msp_set_fc() {
 void msp_send_radar(uint8_t i) {
     radarPos.id = i;
     radarPos.state = peers[i].state;
-    radarPos.lat = peers[i].gps.lat; // x 10E7
-    radarPos.lon = peers[i].gps.lon; // x 10E7
-    radarPos.alt = peers[i].gps.alt * 100; // cm
+    radarPos.lat = peers[i].gps_comp.lat; // x 10E7
+    radarPos.lon = peers[i].gps_comp.lon; // x 10E7
+    radarPos.alt = peers[i].gps_comp.alt * 100; // cm
     radarPos.heading = peers[i].gps.groundCourse / 10; // From ° x 10 to °
     radarPos.speed = peers[i].gps.groundSpeed; // cm/s
     radarPos.lq = peers[i].lq;
     msp.command2(MSP2_COMMON_SET_RADAR_POS , &radarPos, sizeof(radarPos), 0);
-}
-
-void msp_send_peers() {
-    for (int i = 0; i < cfg.lora_nodes_max; i++) {
-        if (peers[i].id > 0) {
-            msp_send_radar(i);
-        }
-    }
 }
 
 void msp_send_peer(uint8_t peer_id) {
@@ -668,14 +651,20 @@ void IRAM_ATTR handleInterrupt() {
         if (sys.phase > MODE_LORA_SYNC) {
             sys.display_page++;
         }
+        else if (sys.phase == MODE_HOST_SCAN) {
+            sys.io_bt_enabled = 1; // Enable the Bluetooth if button pressed during host scan
+        }
+
+/*
         else if (sys.phase == MODE_MENU) {
             sys.menu_line++;
             sys.menu_begin = millis();
             display.clear();
             if (sys.menu_line > 3) {
-            sys.menu_line = 0;
+                sys.menu_line = 0;
             }
         }
+*/
         sys.io_button_released = millis();
     }
     portEXIT_CRITICAL_ISR(&mux);
@@ -726,8 +715,8 @@ void setup() {
         display.drawString(0, 0, "RADAR VERSION ");
         display.setFont(ArialMT_Plain_16);
         display.drawString(100, 0, String(VERSION));
-        display.setFont(ArialMT_Plain_10);        
-        display.drawString(0, 9, "PROFILE " + String(cfg.profile_id) + " " + String(cfg.profile_name));
+        display.setFont(ArialMT_Plain_10);
+        display.drawString(0, 9, String(cfg.profile_name));
         display.drawString(0, 18, "HOST");
         display.display();
     }
@@ -750,7 +739,6 @@ void loop() {
         sys.io_button_pressed = 0;
     }
 
-
 // ---------------------- HOST SCAN
 
     if (sys.phase == MODE_HOST_SCAN) {
@@ -762,9 +750,9 @@ void loop() {
             }
 
             if (curr.name[0] == '\0') {
-                for (int i = 0; i < 4; i++) {
+                for (int i = 0; i < 3; i++) {
                 curr.name[i] = (char) random(65, 90);
-                curr.name[4] = 0;
+                curr.name[3] = 0;
             }
         }
 
@@ -778,13 +766,15 @@ void loop() {
         LoRa.receive();
 
         if (cfg.display_enable) {
-            if (curr.host > 0) {
+            if (curr.host != HOST_NONE) {
                 display.drawString (35, 18, String(host_name[curr.host]) + " " + String(curr.fcversion.versionMajor) + "."  + String(curr.fcversion.versionMinor) + "." + String(curr.fcversion.versionPatchLevel));
                 display.drawString (0, 27, "SERIAL SPD "+ String(SERIAL_SPEED));
             } else {
                 display.drawString (35, 18, String(host_name[curr.host]));
             }
-
+            if (sys.io_bt_enabled) {
+                display.drawString (105, 18, "+BT");
+            }
             display.drawProgressBar(0, 51, 40, 8, 100);
             display.drawString (0, 36, "SCAN");
             display.display();
@@ -814,15 +804,20 @@ void loop() {
 
         if (sys.now > (sys.cycle_scan_begin + LORA_CYCLE_SCAN)) {  // End of the scan, set the ID then sync
 
+            if(sys.io_bt_enabled) {
+                SerialBT.begin((String)"ESP32");
+            }
+
             sys.num_peers = count_peers();
-            if (sys.num_peers >= cfg.lora_nodes_max) { // Too many nodes already, go silent mode
+            if (sys.num_peers >= cfg.lora_nodes_max || curr.host == HOST_GCS) { // Too many nodes already, or connected to a ground station : go silent mode
                 sys.lora_no_tx = 1;
             } else {
+                sys.lora_no_tx = 0;
                 pick_id();
             }
             sys.display_page = 0;
             sys.phase = MODE_LORA_SYNC;
-        } 
+        }
         else { // Still scanning
 
             if (sys.now > sys.display_updated + DISPLAY_CYCLE / 2 && cfg.display_enable) {
@@ -872,26 +867,25 @@ void loop() {
 
         if (sys.lora_no_tx) {
             sprintf(sys.message, "%s", "SILENT MODE (NO TX)");
-        }
-        else {
-            if (sys.num_peers == 0) {
-                sys.lora_next_tx += random(0, 2) * cfg.lora_slot_spacing;
             }
+        else {
             sys.phase = MODE_LORA_TX;
         }
-    sys.lora_tick++;
+        sys.lora_tick++;
     }
 
 // ---------------------- LORA TX
 
     if (sys.phase == MODE_LORA_TX) {
-
-        if ((curr.host == HOST_NONE) || (curr.gps.fixType < 1)) {
+        if (curr.host == HOST_NONE) {
             curr.gps.lat = 0;
             curr.gps.lon = 0;
             curr.gps.alt = 0;
             curr.gps.groundCourse = 0;
             curr.gps.groundSpeed = 0;
+        }
+        else if (curr.host == HOST_INAV) {
+            msp_get_gps(); // GPS > FC > ESP
         }
 
         sys.lora_last_tx = millis();
@@ -947,7 +941,7 @@ void loop() {
     if (sys.now > sys.msp_next_cycle && curr.host != HOST_NONE && sys.phase > MODE_LORA_SYNC && sys.lora_slot < cfg.lora_nodes_max) {
         stats.timer_begin = millis();
 
-        if (sys.lora_slot == 0) {
+        if (sys.lora_slot == 0 && curr.host == HOST_INAV) {
 
             if (sys.lora_tick % 6 == 0) {
                 msp_get_state();
@@ -959,8 +953,33 @@ void loop() {
 
         }
 
-        msp_get_gps(); // GPS > FC > ESP
-        msp_send_peer(sys.lora_slot); // ESP > FC > OSD
+    // msp_send_peer(sys.lora_slot); // ESP > FC > OSD
+
+    // ----------------Send MSP to FC and predict new position for all nodes minus current
+
+        for (int i = 0; i < cfg.lora_nodes_max; i++) {
+            if (peers[i].id > 0 && i+1 != curr.id ) {
+                peers[i].gps_comp.lat = peers[i].gps.lat;
+                peers[i].gps_comp.lon = peers[i].gps.lon;
+                peers[i].gps_comp.alt = peers[i].gps.alt; 
+
+                if (peers[i].gps.groundSpeed > 200 && peers[i].gps.lat != 0 && peers[i].gps_pre.lat != 0) { // If speed >2m/s : Compensate the position delay
+                     sys.now_sec = millis();
+                     int32_t comp_var_lat = peers[i].gps.lat - peers[i].gps_pre.lat;
+                     int32_t comp_var_lon = peers[i].gps.lon - peers[i].gps_pre.lon;
+                     int32_t comp_var_alt = peers[i].gps.alt - peers[i].gps_pre.alt;
+                     int32_t comp_var_dur = 1 + peers[i].updated - peers[i].gps_pre_updated;
+                     int32_t comp_dur_fw = (sys.now_sec - peers[i].updated);
+                     float comp_ratio = comp_dur_fw / comp_var_dur;
+
+                     peers[i].gps_comp.lat += comp_var_lat * comp_ratio;
+                     peers[i].gps_comp.lon += comp_var_lon * comp_ratio;
+                     peers[i].gps_comp.alt += comp_var_alt * comp_ratio;                 
+                } 
+                msp_send_radar(i);
+                delay(5);
+            }
+        }
         stats.last_msp_duration[sys.lora_slot] = millis() - stats.timer_begin;
         sys.msp_next_cycle += cfg.lora_slot_spacing;
         sys.lora_slot++;
