@@ -1,41 +1,42 @@
 // -------- GENERAL
 
-#define VERSION "1.6"
-#define VERSION_CONFIG 160
+#define VERSION "2.0"
+#define VERSION_CONFIG 200
 #define FORCE_DEFAULT_PROFILE 1
 #define CFG_PROFILE_DEFAULT_ID 1
-#define CFG_PROFILE_DEFAULT_NAME "Default"
+#define CFG_PROFILE_DEFAULT_NAME "433MHz 4 nodes"
+
 
 // -------- LORA DEFAULTS
-
-#define LORA_FREQUENCY 433E6 // 433E6, 868E6, 915E6
 
 #define LORA_BANDWIDTH 250000 // 250000
 #define LORA_CODING_RATE 5 // 5
 #define LORA_SPREADING_FACTOR 10 // 9
 #define LORA_POWER 20 
 
-#define LORA_NODES_MAX 4
-#define LORA_SLOT_SPACING 250 // 150
-#define LORA_TIMING_DELAY -70 // -70
-#define LORA_MSP_AFTER_TX_DELAY 180
+#define LORA_FREQUENCY 433E6 // 433E6, 868E6, 915E6 ------
+#define LORA_NODES_MAX 4 // ------
+#define LORA_SLOT_SPACING 250
 
-#define LORA_NAME_LENGTH 6
+#define LORA_TIMING_DELAY -160
+#define LORA_MSP_AFTER_TX_DELAY 150
+
+#define LORA_NAME_LENGTH 3
 #define LORA_CYCLE_SCAN 3000 // 3000
-#define LORA_PEER_TIMEOUT 6000 // 6s
-#define LORA_PEER_TIMEOUT_LOST 30000  // 30s
-#define LORA_DRIFT_THRESHOLD 5 // Min for action
-#define LORA_DRIFT_CORRECTION 10 // Max to correct
+#define LORA_PEER_TIMEOUT 5000 // 5s
+#define LORA_PEER_TIMEOUT_LOST 20000  // 20s
+#define LORA_DRIFT_THRESHOLD 8 // Min for action
+#define LORA_DRIFT_CORRECTION 12 // Max to correct
 
 // --------- IO AND DISPLAY
 
-#define DISPLAY_CYCLE 300
+#define DISPLAY_CYCLE 250
 #define IO_LEDBLINK_DURATION 300
 #define IO_LED_PIN 2
 
 #define SERIAL_PIN_TX 23
 #define SERIAL_PIN_RX 17
-#define SERIAL_SPEED 115200 // 115200 -- 38400
+#define SERIAL_SPEED 115200 
 
 #define SCK 5 // GPIO5 - SX1278's SCK
 #define MISO 19 // GPIO19 - SX1278's MISO
@@ -58,8 +59,8 @@
 
 #define HOST_MSP_TIMEOUT 9000
 #define HOST_NONE 0
-#define HOST_INAV 1
-#define HOST_BTFL 2
+#define HOST_GCS 1
+#define HOST_INAV 2
 
 // -------- STRUCTURE
 
@@ -78,8 +79,15 @@ struct peer_t {
    int16_t direction;
    int16_t relalt;
    msp_raw_gps_t gps;
-   msp_raw_gps_t gpsrec;
+   msp_raw_gps_t gps_rec;
+   msp_raw_gps_t gps_pre;
+   uint32_t gps_pre_updated;
+   msp_raw_gps_t gps_comp;   
    msp_analog_t fcanalog;
+   int16_t gps_lat_int;
+   uint32_t gps_lat_flo;
+   int16_t gps_lon_int;
+   uint32_t gps_lon_flo;
    char name[LORA_NAME_LENGTH + 1];
    };
 
@@ -94,44 +102,15 @@ struct curr_t {
     msp_analog_t fcanalog;
 };
 
-struct air_type0_t { // 80 bits
-    unsigned int id : 4;
-    unsigned int type : 3;
-    signed int lat : 25; // -9 000 000 to +9 000 000    -90x10e5 to +90x10e5
-    signed int lon : 26; // -18 000 000 to +18 000 000   -180x10e5 to +180x10e5
-    unsigned int alt : 13; // 0 to +8192m
-    unsigned int heading : 9; // 0 to 511°
+struct air_type0_t { // 68 bits
+    unsigned int id : 3;
+    unsigned int lat : 17; // decimal 1 to 5, 00000 to 99999
+    unsigned int lon : 17; // decimal 1 to 5, 00000 to 99999   
+    unsigned int alt : 12; // 0 to +4096m
+    unsigned int heading : 6; // 0 to 63 x6°
+    unsigned int extra_type : 3;
+    signed int extra_value : 9;
 };
-
-struct air_type1_t { // 80 bits
-    unsigned int id : 4;
-    unsigned int type : 3;
-    signed int lat : 25; // -9 000 000 to +9 000 000    -90x10e5 to +90x10e5
-    signed int lon : 26; // -18 000 000 to +18 000 000   -180x10e5 to +180x10e5
-    unsigned int alt : 13; // 0 to +8192m
-    unsigned int speed : 6; // 0 to 64m/s 230km/h
-    unsigned int broadcast : 3;
-};
-
-struct air_type2_t { // 80 bits
-    unsigned int id : 4;
-    unsigned int type : 3;
-    unsigned int host : 3;
-    unsigned int state : 3;
-    char name[LORA_NAME_LENGTH]; // 6 char x 8 bits = 48
-    unsigned int temp1 : 19; // Spare
-    };
-
-struct air_type3_t { // 80 bits
-    unsigned int id : 4;
-    unsigned int type : 3;
-    unsigned int vbat : 8;
-    unsigned int mah : 16;
-    unsigned int rssi : 10;
-    unsigned int temp1 : 20; // Spare
-    unsigned int temp2 : 19; // Spare
-    };
-
 
 struct config_t {
 
@@ -206,6 +185,8 @@ struct system_t {
     uint8_t io_led_count;
     uint8_t io_led_blink;
     uint32_t stats_updated = 0;
+
+    bool io_bt_enabled = 0;
 
     char message[20];
 };
