@@ -941,7 +941,7 @@ void loop() {
     if (sys.now > sys.msp_next_cycle && curr.host != HOST_NONE && sys.phase > MODE_LORA_SYNC && sys.lora_slot < cfg.lora_nodes_max) {
         stats.timer_begin = millis();
 
-        if (sys.lora_slot == 0) {
+        if (sys.lora_slot == 0 && curr.host == HOST_INAV) {
 
             if (sys.lora_tick % 6 == 0) {
                 msp_get_state();
