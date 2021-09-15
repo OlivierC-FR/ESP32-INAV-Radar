@@ -176,37 +176,27 @@ return degrees(a2);
 void lora_send() {
 
     air_0.id = curr.id;
-    double lat_dec = (double)curr.gps.lat / 10000000;
-    double lon_dec = (double)curr.gps.lon / 10000000;
-    int lat_inpart = (int) lat_dec; 
-    int lon_inpart = (int) lon_dec;
-    double lat_cal = (lat_dec - lat_inpart) * 100000;
-    double lon_cal = (lon_dec - lon_inpart) * 100000;
-    air_0.lat = (int) lat_cal;
-    air_0.lon = (int) lon_cal;
+    air_0.lat = curr.gps.lat / 100;
+    air_0.lon = curr.gps.lon / 100;
     air_0.alt = curr.gps.alt; // m
-    air_0.heading = curr.gps.groundCourse / 60 ;  // From degres x 10 to degres then /6
 
-    air_0.extra_type = sys.lora_tick % 6;
+    air_0.extra_type = sys.lora_tick % 5;
 
     switch (air_0.extra_type)
         {
-        case 0 : air_0.extra_value = lat_inpart;
+        case 0 : air_0.extra_value = curr.gps.groundCourse / 10;
         break;
 
-        case 1 : air_0.extra_value = lon_inpart;
+        case 1 : air_0.extra_value = curr.gps.groundSpeed / 20;
         break;
 
-        case 2 : air_0.extra_value = curr.gps.groundSpeed / 50;
+        case 2 : air_0.extra_value = curr.name[0];
         break;
 
-        case 3 : air_0.extra_value = curr.name[0];
+        case 3 : air_0.extra_value = curr.name[1];
         break;
 
-        case 4 : air_0.extra_value = curr.name[1];
-        break;
-
-        case 5 : air_0.extra_value = curr.name[2];
+        case 4 : air_0.extra_value = curr.name[2];
         break;   
 
         default:
@@ -245,32 +235,25 @@ void lora_receive(int packetSize) {
     peers[id].updated = sys.lora_last_rx;
     peers[id].rssi = sys.last_rssi;
 
-    peers[id].gps_lat_flo = air_0.lat * 100;
-    peers[id].gps_lon_flo = air_0.lon * 100;
-
-    peers[id].gps.lat = peers[id].gps_lat_int * 10000000 + peers[id].gps_lat_flo; 
-    peers[id].gps.lon = peers[id].gps_lon_int * 10000000 + peers[id].gps_lon_flo; 
+    peers[id].gps.lat = air_0.lat * 100;
+    peers[id].gps.lon = air_0.lon * 100;
     peers[id].gps.alt = air_0.alt; // m
-    peers[id].gps.groundCourse = air_0.heading * 60;
 
     switch (air_0.extra_type)
         {
-        case 0 : peers[id].gps_lat_int = air_0.extra_value;
+        case 0 : peers[id].gps.groundCourse = air_0.extra_value * 10;
         break;
 
-        case 1 : peers[id].gps_lon_int = air_0.extra_value;
+        case 1 : peers[id].gps.groundSpeed = air_0.extra_value * 20;
         break;
 
-        case 2 : peers[id].gps.groundSpeed = air_0.extra_value * 50;
+        case 2 : peers[id].name[0] = air_0.extra_value;
         break;
 
-        case 3 : peers[id].name[0] = air_0.extra_value;
+        case 3 : peers[id].name[1] = air_0.extra_value;
         break;
 
-        case 4 : peers[id].name[1] = air_0.extra_value;
-        break;
-
-        case 5 : peers[id].name[2] = air_0.extra_value;
+        case 4 : peers[id].name[2] = air_0.extra_value;
                  peers[id].name[3] = 0;
         break;  
 
@@ -894,7 +877,7 @@ void loop() {
 
         // Drift correction
 
-        if (curr.id > 1) {
+        if (curr.id > 1 && sys.num_peers_active > 0) {
             int prev = curr.id - 2;
             if (peers[prev].id > 0) {
                 sys.lora_drift = sys.lora_last_tx - peers[prev].updated - cfg.lora_slot_spacing;

@@ -1,7 +1,7 @@
 // -------- GENERAL
 
-#define VERSION "2.0"
-#define VERSION_CONFIG 200
+#define VERSION "2.1"
+#define VERSION_CONFIG 210
 #define FORCE_DEFAULT_PROFILE 1
 #define CFG_PROFILE_DEFAULT_ID 1
 #define CFG_PROFILE_DEFAULT_NAME "433MHz 4 nodes"
@@ -36,7 +36,7 @@
 
 #define SERIAL_PIN_TX 23
 #define SERIAL_PIN_RX 17
-#define SERIAL_SPEED 115200 
+#define SERIAL_SPEED 115200 // 115200 or 38400
 
 #define SCK 5 // GPIO5 - SX1278's SCK
 #define MISO 19 // GPIO19 - SX1278's MISO
@@ -84,10 +84,6 @@ struct peer_t {
    uint32_t gps_pre_updated;
    msp_raw_gps_t gps_comp;   
    msp_analog_t fcanalog;
-   int16_t gps_lat_int;
-   uint32_t gps_lat_flo;
-   int16_t gps_lon_int;
-   uint32_t gps_lon_flo;
    char name[LORA_NAME_LENGTH + 1];
    };
 
@@ -102,14 +98,13 @@ struct curr_t {
     msp_analog_t fcanalog;
 };
 
-struct air_type0_t { // 68 bits
+struct air_type0_t { // 80 bits
     unsigned int id : 3;
-    unsigned int lat : 17; // decimal 1 to 5, 00000 to 99999
-    unsigned int lon : 17; // decimal 1 to 5, 00000 to 99999   
-    unsigned int alt : 12; // 0 to +4096m
-    unsigned int heading : 6; // 0 to 63 x6°
+    signed int lat : 25; // -9 000 000 to +9 000 000 (5 decimals)
+    signed int lon : 26; // -18 000 000 to +18 000 000 (5 decimals)
+    unsigned int alt : 13; // 0 to +8192m
     unsigned int extra_type : 3;
-    signed int extra_value : 9;
+    signed int extra_value : 10;
 };
 
 struct config_t {
