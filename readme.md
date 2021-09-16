@@ -11,6 +11,14 @@ INAV-Radar is an addition to the [INAV](https://github.com/iNavFlight/inav) flig
 
 RCgroups thread: [INAV-Radar on RCgroups](https://www.rcgroups.com/forums/showthread.php?3304673-iNav-Radar-ESP32-LoRa-modems)
 
+*** 2.1 (2021/09/06)
+- New air protocol, fixing a bug with negative longitudes, thanks to Notamed Closed for the find. 
+- Improved accuracy for speed (From 1.8km/h to 0.72km/h)
+- Improved accuracy for the heading (From 6° to 1°)
+- Higher max range for altitude (From 4096 to 8192 meters)
+- Drift correction won't happen when the node is alone, to greatly improve chances of reconnection when multiples nodes are going out then back in range.
+- All nodes must run the same v2.1 firmware, because of the new air protocol
+
 *** 2.0 (2021/05/07)
 - New air protocol (single frame type, faster, simpler)
 - Fixed a bug at boot where the second ESP32 would have trouble to sync on the first because of the "randomization-if-solo" feature
