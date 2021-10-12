@@ -7,7 +7,6 @@
 // This gets defined by PlatformIO environment (platformio.ini)
 // #define CFG_PROFILE_DEFAULT_NAME "433MHz 4 nodes"
 
-
 // -------- LORA DEFAULTS
 
 #define LORA_BANDWIDTH 250000 // 250000
