@@ -82,7 +82,7 @@ int count_peers(bool active = 0) {
     int j = 0;
     for (int i = 0; i < cfg.lora_nodes_max; i++) {
         if (active == 1) {
-            if ((peers[i].id > 0) && !peers[i].lost) {
+            if ((peers[i].id > 0) && peers[i].lost == 0) {
                 j++;
             }
         }
@@ -231,6 +231,7 @@ void lora_receive(int packetSize) {
     sys.air_last_received_id = air_0.id;
     peers[id].id = sys.air_last_received_id;
     peers[id].lq_tick++;
+    peers[id].state = 0;
     peers[id].lost = 0;
     peers[id].updated = sys.lora_last_rx;
     peers[id].rssi = sys.last_rssi;
@@ -379,7 +380,7 @@ void display_draw() {
         display.drawHorizontalLine(0, 11, 128);
 
         for (int i = 0; i < cfg.lora_nodes_max ; i++) {
-            if (peers[i].id > 0 && !peers[i].lost) {
+            if (peers[i].id > 0 && peers[i].lost == 0) {
                 diff = sys.lora_last_tx - peers[i].updated;
                 if (diff > 0 && diff < sys.lora_cycle) {
                     pos[i] = 128 - round(128 * diff / sys.lora_cycle);
@@ -408,7 +409,10 @@ void display_draw() {
                 display.drawString (12, line, String(peers[i].name));
                 display.setTextAlignment (TEXT_ALIGN_RIGHT);
 
-                if (peers[i].lost) { // Peer timed out
+                if (peers[i].lost == 1) { // Peer timed out, short
+                    display.drawString (127, line, "x:" + String((int)((sys.lora_last_tx - peers[i].updated) / 1000)) + "s" );
+                }
+                else if (peers[i].lost == 2) { // Peer timed out, long
                     display.drawString (127, line, "L:" + String((int)((sys.lora_last_tx - peers[i].updated) / 1000)) + "s" );
                 }
                 else {
@@ -477,7 +481,7 @@ void display_draw() {
 
         if (peers[i].id > 0 || iscurrent) {
 
-            if (peers[i].lost && !iscurrent) { display.drawString (19, 0, "LOST"); }
+            if (peers[i].lost > 0 && !iscurrent) { display.drawString (19, 0, "LOST"); }
                 else if (peers[i].lq == 0 && !iscurrent) { display.drawString (19, 0, "x"); }
                 else if (peers[i].lq == 1) { display.drawXbm(19, 2, 8, 8, icon_lq_1); }
                 else if (peers[i].lq == 2) { display.drawXbm(19, 2, 8, 8, icon_lq_2); }
@@ -489,7 +493,7 @@ void display_draw() {
                     display.drawString (19, 12, String(host_name[curr.host]));
                 }
                 else {
-                    if (!peers[i].lost) {
+                    if (peers[i].lost == 0) {
                         display.drawString (28, 0, String(peers[i].rssi) + "db");
                     }
                 }
@@ -601,7 +605,7 @@ void msp_set_fc() {
 
 void msp_send_radar(uint8_t i) {
     radarPos.id = i;
-    radarPos.state = peers[i].state;
+    radarPos.state = (peers[i].lost == 2) ? 2 : peers[i].state;
     radarPos.lat = peers[i].gps_comp.lat; // x 10E7
     radarPos.lon = peers[i].gps_comp.lon; // x 10E7
     radarPos.alt = peers[i].gps_comp.alt * 100; // cm
@@ -990,7 +994,7 @@ void loop() {
                 peers[i].lost = 1;
 
                 if ((sys.now - peers[i].updated) > LORA_PEER_TIMEOUT_LOST) { // Lost for a long time
-                    peers[i].state = 2;
+                    peers[i].lost = 2;
                 }
             }
         }
