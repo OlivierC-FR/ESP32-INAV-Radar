@@ -577,7 +577,7 @@ void msp_get_state() {
 
 void msp_get_name() {
     msp.request(MSP_NAME, &curr.name, sizeof(curr.name));
-    curr.name[6] = '\0';
+    curr.name[7] = '\0';
 }
 
 void msp_get_gps() {
@@ -739,39 +739,37 @@ void loop() {
             if (curr.name[0] == '\0') {
                 for (int i = 0; i < 3; i++) {
                 curr.name[i] = (char) random(65, 90);
-                curr.name[3] = 0;
+                }
+            curr.name[3] = 0;
+            } 
+            curr.gps.fixType = 0;
+            curr.gps.lat = 0;
+            curr.gps.lon = 0;
+            curr.gps.alt = 0;
+            curr.id = 0;
+
+            LoRa.sleep();
+            LoRa.receive();
+
+            if (cfg.display_enable) {
+                if (curr.host != HOST_NONE) {
+                    display.drawString (35, 18, String(host_name[curr.host]) + " " + String(curr.fcversion.versionMajor) + "."  + String(curr.fcversion.versionMinor) + "." + String(curr.fcversion.versionPatchLevel));
+                    display.drawString (0, 27, "SERIAL SPD "+ String(SERIAL_SPEED));
+                } else {
+                    display.drawString (35, 18, String(host_name[curr.host]));
+                }
+                if (sys.io_bt_enabled) {
+                    display.drawString (105, 18, "+BT");
+                }
+                display.drawProgressBar(0, 51, 40, 8, 100);
+                display.drawString (0, 36, "SCAN");
+                display.display();
             }
-        }
 
-        curr.gps.fixType = 0;
-        curr.gps.lat = 0;
-        curr.gps.lon = 0;
-        curr.gps.alt = 0;
-        curr.id = 0;
+            sys.cycle_scan_begin = millis();
+            sys.phase = MODE_LORA_INIT;
 
-        LoRa.sleep();
-        LoRa.receive();
-
-        if (cfg.display_enable) {
-            if (curr.host != HOST_NONE) {
-                display.drawString (35, 18, String(host_name[curr.host]) + " " + String(curr.fcversion.versionMajor) + "."  + String(curr.fcversion.versionMinor) + "." + String(curr.fcversion.versionPatchLevel));
-                display.drawString (0, 27, "SERIAL SPD "+ String(SERIAL_SPEED));
-            } else {
-                display.drawString (35, 18, String(host_name[curr.host]));
-            }
-            if (sys.io_bt_enabled) {
-                display.drawString (105, 18, "+BT");
-            }
-            display.drawProgressBar(0, 51, 40, 8, 100);
-            display.drawString (0, 36, "SCAN");
-            display.display();
-        }
-
-        sys.cycle_scan_begin = millis();
-        sys.phase = MODE_LORA_INIT;
-
-        }
-        else { // Still scanning
+        } else { // Still scanning
             if (sys.now > sys.display_updated + DISPLAY_CYCLE / 2) {
                 delay(100);
                 msp_set_fc();
