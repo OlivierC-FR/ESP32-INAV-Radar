@@ -4,8 +4,7 @@
 #define VERSION_CONFIG 220
 #define FORCE_DEFAULT_PROFILE 1
 #define CFG_PROFILE_DEFAULT_ID 1
-// This gets defined by PlatformIO environment (platformio.ini)
-// #define CFG_PROFILE_DEFAULT_NAME "433MHz 4 nodes"
+// #define CFG_PROFILE_DEFAULT_NAME < (platformio.ini)
 
 // -------- LORA DEFAULTS
 
@@ -14,8 +13,7 @@
 #define LORA_SPREADING_FACTOR 10 // 9
 #define LORA_POWER 20 
 
-// This gets defined by PlatformIO environment (platformio.ini)
-//#define LORA_FREQUENCY 433E6 // 433E6, 868E6, 915E6 ------
+//#define LORA_FREQUENCY < (platformio.ini)
 #define LORA_NODES_MAX 4 // ------
 #define LORA_SLOT_SPACING 250
 
@@ -33,18 +31,7 @@
 
 #define DISPLAY_CYCLE 250
 #define IO_LEDBLINK_DURATION 300
-#define IO_LED_PIN 2
-
-#define SERIAL_PIN_TX 23
-#define SERIAL_PIN_RX 17
-#define SERIAL_SPEED 115200 // 115200 or 38400
-
-#define SCK 5 // GPIO5 - SX1278's SCK
-#define MISO 19 // GPIO19 - SX1278's MISO
-#define MOSI 27 // GPIO27 - SX1278's MOSI
-#define SS 18 // GPIO18 - SX1278's CS
-#define RST 14 // GPIO14 - SX1278's RESET
-#define DI0 26 // GPIO26 - SX1278's IRQ (interrupt request)
+#define SERIAL_SPEED 115200
 
 // -------- PHASES
 

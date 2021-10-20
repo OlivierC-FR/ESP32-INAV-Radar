@@ -5,6 +5,7 @@
 #include <SSD1306.h>
 #include <EEPROM.h>
 #include <main.h>
+#include <targets.h>
 #include <pixel.h>
 #include <math.h>
 #include <cmath>
@@ -30,7 +31,7 @@ char host_name[3][5]={"NoFC", "GCS", "INAV"};
 char host_state[2][5]={"", "ARM"};
 char peer_slotname[9][3]={"X", "A", "B", "C", "D", "E", "F", "G", "H"};
 
-SSD1306 display(0x3c, 4, 15);
+SSD1306 display(OLED_ADDRESS, OLED_SDA, OLED_SCL);
 
 BluetoothSerial SerialBT;
 
@@ -290,8 +291,8 @@ void lora_receive(int packetSize) {
 
 void lora_init() {
 
-    SPI.begin(SCK, MISO, MOSI, SS);
-    LoRa.setPins(SS, RST, DI0);
+    SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
+    LoRa.setPins(LORA_CS, LORA_RST, LORA_IRQ);
 
     if (!LoRa.begin(cfg.lora_frequency)) {
         while (1);
