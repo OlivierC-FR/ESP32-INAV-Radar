@@ -1,6 +1,6 @@
 // -------- GENERAL
 
-#define VERSION "2.2"
+#define VERSION "2.2.1"
 #define VERSION_CONFIG 220
 #define FORCE_DEFAULT_PROFILE 1
 #define CFG_PROFILE_DEFAULT_ID 1
