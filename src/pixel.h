@@ -1,3 +1,11 @@
+//
+// ESP32 Radar
+// Github : https://github.com/OlivierC-FR/ESP32-INAV-Radar
+// RCgroups : https://www.rcgroups.com/forums/showthread.php?3304673-iNav-Radar-ESP32-LoRa-modems
+//
+// -------------------------------------------------------------------------------------------
+
+
 // -------- GRAPHICS
 
 const uint8_t icon_lq_1[] PROGMEM = {
@@ -65,6 +73,8 @@ const uint8_t icon_sq1[] PROGMEM = {
     B01111111,
     B01111111,
 };
+
+/*
 
 #define LOGO_WIDTH 128
 #define LOGO_HEIGHT 64
@@ -156,3 +166,5 @@ const uint8_t logo_bits_s [] PROGMEM = {
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10,
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   0x00, 0x00, 0x00, 0x00, };
+
+*/

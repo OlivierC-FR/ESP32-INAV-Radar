@@ -1,3 +1,11 @@
+//
+// ESP32 Radar
+// Github : https://github.com/OlivierC-FR/ESP32-INAV-Radar
+// RCgroups : https://www.rcgroups.com/forums/showthread.php?3304673-iNav-Radar-ESP32-LoRa-modems
+//
+// -------------------------------------------------------------------------------------------
+
+
 #include <Arduino.h>
 #include <esp_system.h>
 #include <lib/MSP.h>
@@ -19,20 +27,19 @@ config_t cfg;
 system_t sys;
 stats_t stats;
 MSP msp;
-
 msp_radar_pos_t radarPos;
-
 curr_t curr;
 peer_t peers[LORA_NODES_MAX];
-
 air_type0_t air_0;
 
 char host_name[3][5]={"NoFC", "GCS", "INAV"};
-char host_state[2][5]={"", "ARM"};
-char peer_slotname[9][3]={"X", "A", "B", "C", "D", "E", "F", "G", "H"};
+char host_state[2][4]={"", "ARM"};
+char peer_slotname[9][2]={"X", "A", "B", "C", "D", "E", "F", "G", "H"};
+char loramode_name[3][11]={"Standard", "Long range", "Fast"};
+String bt_message = "";
+char bt_incoming;
 
 SSD1306 display(OLED_ADDRESS, OLED_SDA, OLED_SCL);
-
 BluetoothSerial SerialBT;
 
 // -------- EEPROM / CONFIG
@@ -45,7 +52,7 @@ void config_save() {
     EEPROM.commit();
 }
 
-void config_init() {
+void config_init(bool forcedefault = 0) {
 
     size_t size = sizeof(cfg);
     EEPROM.begin(size * 2);
@@ -55,24 +62,24 @@ void config_init() {
         ((char *)&cfg)[i] = data;
     }
 
-    if (cfg.version != VERSION_CONFIG || FORCE_DEFAULT_PROFILE) { // write default config
+    if (cfg.version != VERSION_CONFIG || FORCE_DEFAULT_CONFIG || forcedefault)
+        {
         cfg.version = VERSION_CONFIG;
-        cfg.profile_id = CFG_PROFILE_DEFAULT_ID;
-        strcpy(cfg.profile_name, CFG_PROFILE_DEFAULT_NAME);
-
-        cfg.lora_frequency = LORA_FREQUENCY;
-        cfg.lora_bandwidth = LORA_BANDWIDTH;
-        cfg.lora_coding_rate = LORA_CODING_RATE;
-        cfg.lora_spreading_factor = LORA_SPREADING_FACTOR;
+        strcpy(cfg.target_name, CFG_TARGET_NAME);
         cfg.lora_power = LORA_POWER;
+        cfg.lora_band = LORA_BAND;
+        cfg.lora_frequency = LORA_FREQUENCY_433;
+        cfg.lora_mode = LORA_MODE;
 
-        cfg.lora_nodes_max = LORA_NODES_MAX;
-        cfg.lora_slot_spacing = LORA_SLOT_SPACING;
-        cfg.lora_timing_delay = LORA_TIMING_DELAY;
-        cfg.msp_after_tx_delay = LORA_MSP_AFTER_TX_DELAY;
+        cfg.lora_bandwidth = LORA_M0_BANDWIDTH;
+        cfg.lora_coding_rate = LORA_M0_CODING_RATE;
+        cfg.lora_spreading_factor = LORA_M0_SPREADING_FACTOR;
+        cfg.lora_nodes = LORA_M0_NODES;
+        cfg.lora_slot_spacing = LORA_M0_SLOT_SPACING;
+        cfg.lora_timing_delay = LORA_M0_TIMING_DELAY;
+        cfg.msp_after_tx_delay = LORA_M0_MSP_AFTER_TX_DELAY;
 
         cfg.display_enable = 1;
-
         config_save();
     }
 }
@@ -81,7 +88,7 @@ void config_init() {
 
 int count_peers(bool active = 0) {
     int j = 0;
-    for (int i = 0; i < cfg.lora_nodes_max; i++) {
+    for (int i = 0; i < cfg.lora_nodes; i++) {
         if (active == 1) {
             if ((peers[i].id > 0) && peers[i].lost == 0) {
                 j++;
@@ -98,7 +105,7 @@ int count_peers(bool active = 0) {
 
 void reset_peers() {
     sys.now_sec = millis();
-    for (int i = 0; i < cfg.lora_nodes_max; i++) {
+    for (int i = 0; i < cfg.lora_nodes; i++) {
         peers[i].id = 0;
         peers[i].host = 0;
         peers[i].state = 0;
@@ -118,7 +125,7 @@ void reset_peers() {
 
 void pick_id() {
     curr.id = 0;
-    for (int i = 0; i < cfg.lora_nodes_max; i++) {
+    for (int i = 0; i < cfg.lora_nodes; i++) {
         if ((peers[i].id == 0) && (curr.id == 0)) {
             curr.id = i + 1;
         }
@@ -127,7 +134,7 @@ void pick_id() {
 
 void resync_tx_slot(int16_t delay) {
     bool startnow = 0;
-    for (int i = 0; (i < cfg.lora_nodes_max) && (startnow == 0); i++) {
+    for (int i = 0; (i < cfg.lora_nodes) && (startnow == 0); i++) {
         if (peers[i].id > 0) {
             sys.lora_next_tx = peers[i].updated + (curr.id - peers[i].id) * cfg.lora_slot_spacing + sys.lora_cycle + delay;
             startnow = 1;
@@ -180,7 +187,6 @@ void lora_send() {
     air_0.lat = curr.gps.lat / 100;
     air_0.lon = curr.gps.lon / 100;
     air_0.alt = curr.gps.alt; // m
-
     air_0.extra_type = sys.lora_tick % 5;
 
     switch (air_0.extra_type)
@@ -198,13 +204,13 @@ void lora_send() {
         break;
 
         case 4 : air_0.extra_value = curr.name[2];
-        break;   
+        break;
 
         default:
         break;
         }
 
-    while (!LoRa.beginPacket()) {  }
+    while (!LoRa.beginPacket()) {  } // --------------------------- Implicit len
     LoRa.write((uint8_t*)&air_0, sizeof(air_0));
     LoRa.endPacket(false);
 }
@@ -226,7 +232,7 @@ void lora_receive(int packetSize) {
     peers[id].gps_pre.lon = peers[id].gps.lon;
     peers[id].gps_pre.alt = peers[id].gps.alt;
     peers[id].gps_pre.groundCourse = peers[id].gps.groundCourse;
-    peers[id].gps_pre.groundSpeed = peers[id].gps.groundSpeed;  
+    peers[id].gps_pre.groundSpeed = peers[id].gps.groundSpeed;
     peers[id].gps_pre_updated = peers[id].updated;
 
     sys.air_last_received_id = air_0.id;
@@ -257,14 +263,13 @@ void lora_receive(int packetSize) {
 
         case 4 : peers[id].name[2] = air_0.extra_value;
                  peers[id].name[3] = 0;
-        break;  
+        break;
 
         default:
         break;
         }
 
     if (peers[id].gps.lat != 0 && peers[id].gps.lon != 0) {  // Save the last known coordinates
-
         peers[id].gps_rec.lat = peers[id].gps.lat;
         peers[id].gps_rec.lon = peers[id].gps.lon;
         peers[id].gps_rec.alt = peers[id].gps.alt;
@@ -272,11 +277,13 @@ void lora_receive(int packetSize) {
         peers[id].gps_rec.groundSpeed = peers[id].gps.groundSpeed;
     }
 
-    if (sys.io_bt_enabled) {
-        SerialBT.println((String)"[" + char(id+65) + "] " + peers[id].name + " N" + peers[id].gps.lat + " E"+peers[id].gps.lon+ " "+ peers[id].gps.alt + "m");
-    }
-
     sys.num_peers = count_peers();
+
+    if (sys.io_bt_enabled && sys.debug) {
+        SerialBT.println((String)"[" + char(id+65) + "] " + peers[id].name + " N" + peers[id].gps.lat + " E"+peers[id].gps.lon+ " "+ peers[id].gps.alt + "m " + String(peers[id].gps.groundSpeed / 100) + "m/s " + String(peers[id].gps.groundCourse / 10) + "° " + String(peers[id].rssi) + "db");
+        // SerialBT.println("SNR: " + String(sys.last_snr)+"dB / Freq.err: " + String(sys.last_freqerror)+"Hz");
+        // SerialBT.println("Packet size: " + String(packetSize));
+    }
 
     if ((sys.air_last_received_id == curr.id) && (sys.phase > MODE_LORA_SYNC) && !sys.lora_no_tx) { // Slot conflict
         uint32_t cs1 = peers[id].name[0] + peers[id].name[1] * 26 + peers[id].name[2] * 26 * 26 ;
@@ -294,9 +301,7 @@ void lora_init() {
     SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
     LoRa.setPins(LORA_CS, LORA_RST, LORA_IRQ);
 
-    if (!LoRa.begin(cfg.lora_frequency)) {
-        while (1);
-    }
+    if (!LoRa.begin(cfg.lora_frequency)) { while (1); }
 
     LoRa.sleep();
     LoRa.setSignalBandwidth(cfg.lora_bandwidth);
@@ -330,45 +335,40 @@ void display_draw() {
 
     if (sys.display_page == 0) {
 
-        display.setFont(ArialMT_Plain_24);
-        display.setTextAlignment(TEXT_ALIGN_RIGHT);
-        display.drawString(26, 11, String(curr.gps.numSat));
-        display.drawString(13, 42, String(sys.num_peers_active + 1));
-        display.drawString (125, 11, String(peer_slotname[curr.id]));
-        display.setFont(ArialMT_Plain_10);
-
-        if (sys.io_bt_enabled) { 
-            display.drawString (126, 29, "_ _ _ _ _ _ _ _ _ _ _ BT _ _ _");
+        if (sys.io_bt_enabled) {
+            display.setFont(ArialMT_Plain_10);
+            display.setTextAlignment(TEXT_ALIGN_LEFT);
+            display.drawString (18, 0, "CONFIGURATION");
+            display.drawString (0, 20, "Connect to the ESP32 AP");
+            display.drawString (0, 30, "with a Bluetooth terminal");
+            display.drawString (0, 40, "type CMD for commands");
         }
-        else {
+        else
+        {
+            display.setFont(ArialMT_Plain_24);
+            display.setTextAlignment(TEXT_ALIGN_RIGHT);
+            display.drawString(26, 11, String(curr.gps.numSat));
+            display.drawString(13, 42, String(sys.num_peers_active + 1));
+            display.drawString (125, 11, String(peer_slotname[curr.id]));
+            display.setFont(ArialMT_Plain_10);
             display.drawString (126, 29, "_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ");
+            display.drawString (107, 44, String(stats.percent_received));
+            display.drawString(107, 54, String(sys.last_rssi));
+            display.setTextAlignment (TEXT_ALIGN_CENTER);
+            display.drawString (64, 0, String(sys.message));
+            display.setTextAlignment (TEXT_ALIGN_LEFT);
+            display.drawString (55, 12, String(curr.name));
+            display.drawString (27, 23, "SAT");
+            display.drawString (108, 44, "%E");
+            display.drawString(35, 44, String(sys.pps) + "p/s");
+            display.drawString (109, 54, "dB");
+            display.drawString (55, 23, String(host_name[curr.host]));
+            display.drawString(15, 44, "/" + String(cfg.lora_nodes));
+            display.drawString(15, 54, String(loramode_name[cfg.lora_mode]));
+
+            if (curr.gps.fixType == 1) display.drawString (27, 12, "2D");
+            if (curr.gps.fixType == 2) display.drawString (27, 12, "3D");
         }
-        display.drawString (107, 44, String(stats.percent_received));
-        display.drawString(107, 54, String(sys.last_rssi));
-        display.setTextAlignment (TEXT_ALIGN_CENTER);
-        display.drawString (64, 0, String(sys.message));
-        display.setTextAlignment (TEXT_ALIGN_LEFT);
-        display.drawString (55, 12, String(curr.name));
-        display.drawString (27, 23, "SAT");
-        display.drawString (108, 44, "%E");
-        display.drawString(21, 54, String(sys.pps) + "p/s");
-        display.drawString (109, 54, "dB");
-        display.drawString (55, 23, String(host_name[curr.host]));
-        display.drawString (55, 44, "P" + String(cfg.profile_id));
-
-        for (int i = 0; i < cfg.lora_nodes_max; i++) {
-
-            if (peers[i].id > 0 && peers[i].updated > millis() - sys.lora_cycle) {
-                display.drawString (44 + i * 8, 54, String(peer_slotname[peers[i].id]));
-            }
-        }
-
-        display.drawString (15, 44, "Nod/" + String(cfg.lora_nodes_max));
-
-        if (curr.gps.fixType == 1) display.drawString (27, 12, "2D");
-        if (curr.gps.fixType == 2) display.drawString (27, 12, "3D");
-
-
     }
 
     else if (sys.display_page == 1) {
@@ -380,7 +380,7 @@ void display_draw() {
         display.setTextAlignment (TEXT_ALIGN_LEFT);
         display.drawHorizontalLine(0, 11, 128);
 
-        for (int i = 0; i < cfg.lora_nodes_max ; i++) {
+        for (int i = 0; i < cfg.lora_nodes ; i++) {
             if (peers[i].id > 0 && peers[i].lost == 0) {
                 diff = sys.lora_last_tx - peers[i].updated;
                 if (diff > 0 && diff < sys.lora_cycle) {
@@ -394,7 +394,7 @@ void display_draw() {
 
         int rect_l = stats.last_tx_duration * 128 / sys.lora_cycle;
 
-        for (int i = 0; i < cfg.lora_nodes_max; i++) {
+        for (int i = 0; i < cfg.lora_nodes; i++) {
 
             display.setTextAlignment (TEXT_ALIGN_LEFT);
 
@@ -455,13 +455,12 @@ void display_draw() {
         display.drawString (111, 10, String(stats.last_msp_duration[0]) + " / " + String(stats.last_msp_duration[1]));
         display.drawString (111, 20, String(stats.last_oled_duration));
         display.drawString (111, 30, String(sys.lora_cycle));
-        display.drawString (111, 40, String(cfg.lora_nodes_max) + " x " + String(cfg.lora_slot_spacing));
+        display.drawString (111, 40, String(cfg.lora_nodes) + " x " + String(cfg.lora_slot_spacing));
         display.drawString (111, 50, String((int)millis() / 1000));
-
     }
     else if (sys.display_page >= 3) {
 
-        int i = constrain(sys.display_page - 3, 0, cfg.lora_nodes_max - 1);
+        int i = constrain(sys.display_page - 3, 0, cfg.lora_nodes - 1);
         bool iscurrent = (i + 1 == curr.id);
 
         display.setFont(ArialMT_Plain_24);
@@ -561,13 +560,6 @@ void display_draw() {
     display.display();
 }
 
-void display_logo() {
-    display.drawXbm(0, 0, LOGO_WIDTH, LOGO_HEIGHT, logo_bits_s);
-    display.display();
-    delay(1000);
-    display.clear();
-}
-
 // -------- MSP and FC
 
 void msp_get_state() {
@@ -596,7 +588,7 @@ void msp_set_fc() {
     }
     else if (strncmp(j, "GCS", 3) == 0) {
         curr.host = HOST_GCS;
-        msp.request(MSP_FC_VERSION, &curr.fcversion, sizeof(curr.fcversion));        
+        msp.request(MSP_FC_VERSION, &curr.fcversion, sizeof(curr.fcversion));
     }
 }
 
@@ -639,20 +631,14 @@ void IRAM_ATTR handleInterrupt() {
         if (sys.phase > MODE_LORA_SYNC) {
             sys.display_page++;
         }
-        else if (sys.phase == MODE_HOST_SCAN) {
-            sys.io_bt_enabled = 1; // Enable the Bluetooth if button pressed during host scan
+        else if (sys.phase == MODE_HOST_SCAN || sys.phase == MODE_LORA_SCAN)  {
+            sys.io_bt_enabled = 1; // Enable the Bluetooth if button pressed during host scan or lora scan
         }
-
-/*
-        else if (sys.phase == MODE_MENU) {
-            sys.menu_line++;
-            sys.menu_begin = millis();
-            display.clear();
-            if (sys.menu_line > 3) {
-                sys.menu_line = 0;
-            }
+        else if (sys.phase == MODE_START) {
+            for (int i = 0; i < 512; i++) { EEPROM.write(i, 0); }
+            EEPROM.commit();
+            delay(500);
         }
-*/
         sys.io_button_released = millis();
     }
     portEXIT_CRITICAL_ISR(&mux);
@@ -663,49 +649,56 @@ void IRAM_ATTR handleInterrupt() {
 void setup() {
 
     sys.phase = MODE_START;
+    sys.forcereset = 0;
+    sys.io_bt_enabled = CFG_AUTOSTART_BT;
+    sys.debug = 0;
 
     config_init();
 
-    sys.lora_cycle = cfg.lora_nodes_max * cfg.lora_slot_spacing;
+    sys.lora_cycle = cfg.lora_nodes * cfg.lora_slot_spacing;
     sys.cycle_stats = sys.lora_cycle * 2;
 
     pinMode(IO_LED_PIN, OUTPUT);
     sys.io_led_blink = 0;
 
-    if (cfg.display_enable) {
-        display_init();
-        display_logo();
-        display.clear();
-        display.display();
-    }
-
-    msp.begin(Serial1);
-    Serial1.begin(SERIAL_SPEED, SERIAL_8N1, SERIAL_PIN_RX , SERIAL_PIN_TX);
-    reset_peers();
-
     pinMode(interruptPin, INPUT);
     sys.io_button_pressed = 0;
     attachInterrupt(digitalPinToInterrupt(interruptPin), handleInterrupt, RISING);
 
-    /*
-    sys.display_updated = 0;
-    sys.menu_line = CFG_PROFILE_DEFAULT;
-    sys.menu_line = 1; // ---------------------
-    sys.menu_begin = millis();
-    sys.phase = MODE_MENU;
-    */
+    if (cfg.display_enable) {
+        display_init();
+        display.clear();
+        display.setFont(ArialMT_Plain_16);
+        display.setTextAlignment(TEXT_ALIGN_LEFT);
+        display.drawString(0,0, "ESP32");
+        display.drawString(0,17, "RADAR");
+        display.setTextAlignment(TEXT_ALIGN_RIGHT);
+        display.drawString(127, 0, String(VERSION));
+        display.setTextAlignment(TEXT_ALIGN_LEFT);
+        display.setFont(ArialMT_Plain_10);
+        display.drawString (0, 52, "Press for full reset");
+        display.display();
+    }
+
+    delay(START_DELAY);
+
+    msp.begin(Serial1);
+    Serial1.begin(SERIAL_SPEED, SERIAL_8N1, SERIAL_PIN_RX , SERIAL_PIN_TX);
+    reset_peers();
 
     lora_init();
 
     if (cfg.display_enable) {
         display.clear();
         display.setFont(ArialMT_Plain_10);
-        display.drawString(0, 0, "RADAR VERSION ");
-        display.setFont(ArialMT_Plain_16);
-        display.drawString(100, 0, String(VERSION));
-        display.setFont(ArialMT_Plain_10);
-        display.drawString(0, 9, String(cfg.profile_name));
-        display.drawString(0, 18, "HOST");
+        display.drawString(0, 52, "Press to start BT config");
+        display.setTextAlignment(TEXT_ALIGN_RIGHT);
+        display.setTextAlignment(TEXT_ALIGN_LEFT);
+        display.drawString(0, 9, String(cfg.target_name));
+        display.drawString(35, 9, String(cfg.lora_band) + "MHz");
+        display.drawString(0, 19, "MODE:");
+        display.drawString(35, 19, String(loramode_name[cfg.lora_mode]));
+        display.drawString(0, 29, "HOST:");
         display.display();
     }
 
@@ -719,329 +712,466 @@ void setup() {
 
 void loop() {
 
-    sys.now = millis();
+sys.now = millis();
 
 // ---------------------- IO BUTTON
 
-    if ((sys.now > sys.io_button_released + 150) && (sys.io_button_pressed == 1)) {
-        sys.io_button_pressed = 0;
-    }
+if ((sys.now > sys.io_button_released + 150) && (sys.io_button_pressed == 1)) {
+    sys.io_button_pressed = 0;
+}
 
 // ---------------------- HOST SCAN
 
-    if (sys.phase == MODE_HOST_SCAN) {
+if (sys.phase == MODE_HOST_SCAN) {
 
-        if ((sys.now > (sys.cycle_scan_begin + HOST_MSP_TIMEOUT)) || (curr.host != HOST_NONE)) {  // End of the host scan
+    if ((sys.now > (sys.cycle_scan_begin + HOST_MSP_TIMEOUT)) || (curr.host != HOST_NONE)) {  // End of the host scan
+        if (curr.host != HOST_NONE) {
+            msp_get_name();
+        }
 
-            if (curr.host != HOST_NONE) {
-                msp_get_name();
-            }
-
-            if (curr.name[0] == '\0') {
-                for (int i = 0; i < 3; i++) {
+        if (curr.name[0] == '\0') {
+            for (int i = 0; i < 3; i++) {
                 curr.name[i] = (char) random(65, 90);
-                }
-            curr.name[3] = 0;
-            } 
-            curr.gps.fixType = 0;
-            curr.gps.lat = 0;
-            curr.gps.lon = 0;
-            curr.gps.alt = 0;
-            curr.id = 0;
-
-            LoRa.sleep();
-            LoRa.receive();
-
-            if (cfg.display_enable) {
-                if (curr.host != HOST_NONE) {
-                    display.drawString (35, 18, String(host_name[curr.host]) + " " + String(curr.fcversion.versionMajor) + "."  + String(curr.fcversion.versionMinor) + "." + String(curr.fcversion.versionPatchLevel));
-                    display.drawString (0, 27, "SERIAL SPD "+ String(SERIAL_SPEED));
-                } else {
-                    display.drawString (35, 18, String(host_name[curr.host]));
-                }
-                if (sys.io_bt_enabled) {
-                    display.drawString (105, 18, "+BT");
-                }
-                display.drawProgressBar(0, 51, 40, 8, 100);
-                display.drawString (0, 36, "SCAN");
-                display.display();
             }
-
-            sys.cycle_scan_begin = millis();
-            sys.phase = MODE_LORA_INIT;
-
-        } else { // Still scanning
-            if (sys.now > sys.display_updated + DISPLAY_CYCLE / 2) {
-                delay(100);
-                msp_set_fc();
-
-                if (cfg.display_enable) {
-                    display.drawProgressBar(0, 53, 40, 6, 100 * (millis() - sys.cycle_scan_begin) / HOST_MSP_TIMEOUT);
-                    display.display();
-                }
-                sys.display_updated = millis();
-            }
-        }
-    }
-
-// ---------------------- LORA INIT
-
-    if (sys.phase == MODE_LORA_INIT) {
-
-        if (sys.now > (sys.cycle_scan_begin + LORA_CYCLE_SCAN)) {  // End of the scan, set the ID then sync
-
-            if(sys.io_bt_enabled) {
-                SerialBT.begin((String)"ESP32");
-            }
-
-            sys.num_peers = count_peers();
-            if (sys.num_peers >= cfg.lora_nodes_max || curr.host == HOST_GCS) { // Too many nodes already, or connected to a ground station : go silent mode
-                sys.lora_no_tx = 1;
-            } else {
-                sys.lora_no_tx = 0;
-                pick_id();
-            }
-            sys.display_page = 0;
-            sys.phase = MODE_LORA_SYNC;
-        }
-        else { // Still scanning
-
-            if (sys.now > sys.display_updated + DISPLAY_CYCLE / 2 && cfg.display_enable) {
-                for (int i = 0; i < cfg.lora_nodes_max; i++) {
-                    if (peers[i].id > 0) {
-                        display.drawString(40 + peers[i].id * 8, 36, String(peer_slotname[peers[i].id]));
-                    }
-                }
-                display.drawProgressBar(40, 51, 86, 8, 100 * (millis() - sys.cycle_scan_begin) / LORA_CYCLE_SCAN);
-                display.display();
-                sys.display_updated = millis();
-            }
-        delay(20);
-        }
-    }
-
-// ---------------------- LORA SYNC
-
-    if (sys.phase == MODE_LORA_SYNC) {
-
-        if (sys.num_peers == 0 || sys.lora_no_tx) { // Alone or Silent mode, no need to sync
-            sys.lora_next_tx = millis() + sys.lora_cycle;
-            }
-        else { // Not alone, sync by slot
-            resync_tx_slot(cfg.lora_timing_delay);
+        curr.name[3] = 0;
         }
 
-        sys.display_updated = sys.lora_next_tx + sys.lora_cycle - 30;
-        sys.stats_updated = sys.lora_next_tx + sys.lora_cycle - 15;
-        sys.pps = 0;
-        sys.ppsc = 0;
-        sys.num_peers = 0;
-        stats.packets_total = 0;
-        stats.packets_received = 0;
-        stats.percent_received = 0;
-        digitalWrite(IO_LED_PIN, LOW);
-        sys.phase = MODE_LORA_RX;
-    }
-
-// ---------------------- LORA RX
-
-    if ((sys.phase == MODE_LORA_RX) && (sys.now > sys.lora_next_tx)) {
-
-        while (sys.now > sys.lora_next_tx) { // In  case we skipped some beats
-            sys.lora_next_tx += sys.lora_cycle;
-        }
-
-        if (sys.lora_no_tx) {
-            sprintf(sys.message, "%s", "SILENT MODE (NO TX)");
-            }
-        else {
-            sys.phase = MODE_LORA_TX;
-        }
-        sys.lora_tick++;
-    }
-
-// ---------------------- LORA TX
-
-    if (sys.phase == MODE_LORA_TX) {
-        if (curr.host == HOST_NONE) {
-            curr.gps.lat = 0;
-            curr.gps.lon = 0;
-            curr.gps.alt = 0;
-            curr.gps.groundCourse = 0;
-            curr.gps.groundSpeed = 0;
-        }
-        else if (curr.host == HOST_INAV) {
-            msp_get_gps(); // GPS > FC > ESP
-        }
-
-        sys.lora_last_tx = millis();
-        lora_send();
-        stats.last_tx_duration = millis() - sys.lora_last_tx;
-
-        // Drift correction
-
-        if (curr.id > 1 && sys.num_peers_active > 0) {
-            int prev = curr.id - 2;
-            if (peers[prev].id > 0) {
-                sys.lora_drift = sys.lora_last_tx - peers[prev].updated - cfg.lora_slot_spacing;
-
-                if ((abs(sys.lora_drift) > LORA_DRIFT_THRESHOLD) && (abs(sys.lora_drift) < cfg.lora_slot_spacing)) {
-                    sys.drift_correction = constrain(sys.lora_drift, -LORA_DRIFT_CORRECTION, LORA_DRIFT_CORRECTION);
-                    sys.lora_next_tx -= sys.drift_correction;
-                    sprintf(sys.message, "%s %3d", "TIMING ADJUST", -sys.drift_correction);
-                }
-            }
-        }
-
-        sys.lora_slot = 0;
-        sys.msp_next_cycle = sys.lora_last_tx + cfg.msp_after_tx_delay;
-
-        // Back to RX
+        curr.gps.fixType = 0;
+        curr.gps.lat = 0;
+        curr.gps.lon = 0;
+        curr.gps.alt = 0;
+        curr.id = 0;
 
         LoRa.sleep();
         LoRa.receive();
-        sys.phase = MODE_LORA_RX;
+
+        if (cfg.display_enable) {
+            if (curr.host != HOST_NONE) {
+                display.drawString (35, 29, String(host_name[curr.host]) + " " + String(curr.fcversion.versionMajor) + "."  + String(curr.fcversion.versionMinor) + "." + String(curr.fcversion.versionPatchLevel));
+            } else {
+                display.drawString (35, 29, String(host_name[curr.host]));
+            }
+            if (sys.io_bt_enabled) {
+                display.drawString (105, 29, "+BT");
+            }
+            display.drawProgressBar(0, 0, 63, 6, 100);
+            display.drawString (0, 39, "SCAN:");
+            display.display();
+        }
+
+        sys.cycle_scan_begin = millis();
+        sys.phase = MODE_LORA_SCAN;
+
     }
+    else { // Still scanning
+        if (sys.now > sys.display_updated + DISPLAY_CYCLE / 2) {
+            delay(100);
+            msp_set_fc();
+
+            if (cfg.display_enable) {
+                display.drawProgressBar(0, 0, 63, 6, 100 * (millis() - sys.cycle_scan_begin) / HOST_MSP_TIMEOUT);
+                display.display();
+            }
+            sys.display_updated = millis();
+        }
+    }
+}
+
+// ---------------------- LORA INIT
+
+if (sys.phase == MODE_LORA_SCAN) {
+
+    if (sys.now > (sys.cycle_scan_begin + LORA_CYCLE_SCAN)) {  // End of the scan, set the ID then sync
+
+        if(sys.io_bt_enabled) {
+            SerialBT.begin((String)"ESP32");
+        }
+
+        sys.num_peers = count_peers();
+        if (sys.num_peers >= cfg.lora_nodes || curr.host == HOST_GCS) { // Too many nodes already, or connected to a ground station : go silent mode
+            sys.lora_no_tx = 1;
+        }
+        else {
+            sys.lora_no_tx = 0;
+            pick_id();
+        }
+        sys.display_page = 0;
+        sys.phase = MODE_LORA_SYNC;
+    }
+    else { // Still scanning
+
+        if (sys.now > sys.display_updated + DISPLAY_CYCLE / 2 && cfg.display_enable) {
+            for (int i = 0; i < cfg.lora_nodes; i++) {
+                if (peers[i].id > 0) {
+                    display.drawString(28 + peers[i].id * 8, 39, String(peer_slotname[peers[i].id]));
+                }
+            }
+            display.drawProgressBar(64, 0, 63, 6, 100 * (millis() - sys.cycle_scan_begin) / LORA_CYCLE_SCAN);
+            display.display();
+            sys.display_updated = millis();
+        }
+    delay(20);
+    }
+}
+
+// ---------------------- LORA SYNC
+
+if (sys.phase == MODE_LORA_SYNC) {
+
+    if (sys.num_peers == 0 || sys.lora_no_tx) { // Alone or Silent mode, no need to sync
+        sys.lora_next_tx = millis() + sys.lora_cycle;
+        }
+    else { // Not alone, sync by slot
+        resync_tx_slot(cfg.lora_timing_delay);
+    }
+
+    sys.display_updated = sys.lora_next_tx + sys.lora_cycle - 30;
+    sys.stats_updated = sys.lora_next_tx + sys.lora_cycle - 15;
+    sys.pps = 0;
+    sys.ppsc = 0;
+    sys.num_peers = 0;
+    stats.packets_total = 0;
+    stats.packets_received = 0;
+    stats.percent_received = 0;
+    digitalWrite(IO_LED_PIN, LOW);
+    sys.phase = MODE_LORA_RX;
+}
+
+// ---------------------- LORA RX
+
+if ((sys.phase == MODE_LORA_RX) && (sys.now > sys.lora_next_tx)) {
+
+    while (sys.now > sys.lora_next_tx) { // In  case we skipped some beats
+        sys.lora_next_tx += sys.lora_cycle;
+    }
+
+    if (sys.lora_no_tx) {
+        sprintf(sys.message, "%s", "SILENT MODE (NO TX)");
+        }
+    else {
+        sys.phase = MODE_LORA_TX;
+    }
+    sys.lora_tick++;
+}
+
+// ---------------------- LORA TX
+
+if (sys.phase == MODE_LORA_TX) {
+    if (curr.host == HOST_NONE) {
+        curr.gps.lat = 0;
+        curr.gps.lon = 0;
+        curr.gps.alt = 0;
+        curr.gps.groundCourse = 0;
+        curr.gps.groundSpeed = 0;
+    }
+    else if (curr.host == HOST_INAV) {
+        msp_get_gps(); // GPS > FC > ESP
+    }
+
+    sys.lora_last_tx = millis();
+    lora_send();
+    stats.last_tx_duration = millis() - sys.lora_last_tx;
+
+    // Drift correction
+
+    if (curr.id > 1 && sys.num_peers_active > 0) {
+        int prev = curr.id - 2;
+        if (peers[prev].id > 0) {
+            sys.lora_drift = sys.lora_last_tx - peers[prev].updated - cfg.lora_slot_spacing;
+
+            if ((abs(sys.lora_drift) > LORA_DRIFT_THRESHOLD) && (abs(sys.lora_drift) < cfg.lora_slot_spacing)) {
+                sys.drift_correction = constrain(sys.lora_drift, -LORA_DRIFT_CORRECTION, LORA_DRIFT_CORRECTION);
+                sys.lora_next_tx -= sys.drift_correction;
+                sprintf(sys.message, "%s %3d", "TIMING ADJUST", -sys.drift_correction);
+            }
+        }
+    }
+
+    sys.lora_slot = 0;
+    sys.msp_next_cycle = sys.lora_last_tx + cfg.msp_after_tx_delay;
+
+    // Back to RX
+
+    LoRa.sleep();
+    LoRa.receive();
+    sys.phase = MODE_LORA_RX;
+}
 
 // ---------------------- DISPLAY
 
-    if ((sys.now > sys.display_updated + DISPLAY_CYCLE) && sys.display_enable && (sys.phase > MODE_LORA_SYNC) && cfg.display_enable) {
-        stats.timer_begin = millis();
+if ((sys.now > sys.display_updated + DISPLAY_CYCLE) && sys.display_enable && (sys.phase > MODE_LORA_SYNC) && cfg.display_enable) {
+    stats.timer_begin = millis();
 
-        if (sys.num_peers == 0 && sys.display_page == 1)  { // No need for timings graphs when alone
-            sys.display_page++;
-        }
-
-        if (sys.display_page >= (3 + cfg.lora_nodes_max)) {
-            sys.display_page = 0;
-        }
-
-        display_draw();
-        sys.message[0] = 0;
-        stats.last_oled_duration = millis() - stats.timer_begin;
-        sys.display_updated = sys.now;
+    if (sys.num_peers == 0 && sys.display_page == 1)  { // No need for timings graphs when alone
+        sys.display_page++;
     }
+
+    if (sys.display_page >= (3 + cfg.lora_nodes)) {
+        sys.display_page = 0;
+    }
+
+    display_draw();
+    sys.message[0] = 0;
+    stats.last_oled_duration = millis() - stats.timer_begin;
+    sys.display_updated = sys.now;
+}
 
 // ---------------------- SERIAL / MSP
 
-    if (sys.now > sys.msp_next_cycle && curr.host != HOST_NONE && sys.phase > MODE_LORA_SYNC && sys.lora_slot < cfg.lora_nodes_max) {
-        stats.timer_begin = millis();
+if (sys.now > sys.msp_next_cycle && curr.host != HOST_NONE && sys.phase > MODE_LORA_SYNC && sys.lora_slot < cfg.lora_nodes) {
+    stats.timer_begin = millis();
 
-        if (sys.lora_slot == 0 && curr.host == HOST_INAV) {
+    if (sys.lora_slot == 0 && curr.host == HOST_INAV) {
 
-            if (sys.lora_tick % 6 == 0) {
-                msp_get_state();
-            }
-
-            if ((sys.lora_tick + 1) % 6 == 0) {
-                msp_get_fcanalog();
-            }
-
+        if (sys.lora_tick % 6 == 0) {
+            msp_get_state();
         }
 
-    // msp_send_peer(sys.lora_slot); // ESP > FC > OSD
-
-    // ----------------Send MSP to FC and predict new position for all nodes minus current
-
-        for (int i = 0; i < cfg.lora_nodes_max; i++) {
-            if (peers[i].id > 0 && i+1 != curr.id ) {
-                peers[i].gps_comp.lat = peers[i].gps.lat;
-                peers[i].gps_comp.lon = peers[i].gps.lon;
-                peers[i].gps_comp.alt = peers[i].gps.alt; 
-
-                if (peers[i].gps.groundSpeed > 200 && peers[i].gps.lat != 0 && peers[i].gps_pre.lat != 0) { // If speed >2m/s : Compensate the position delay
-                     sys.now_sec = millis();
-                     int32_t comp_var_lat = peers[i].gps.lat - peers[i].gps_pre.lat;
-                     int32_t comp_var_lon = peers[i].gps.lon - peers[i].gps_pre.lon;
-                     int32_t comp_var_alt = peers[i].gps.alt - peers[i].gps_pre.alt;
-                     int32_t comp_var_dur = 1 + peers[i].updated - peers[i].gps_pre_updated;
-                     int32_t comp_dur_fw = (sys.now_sec - peers[i].updated);
-                     float comp_ratio = comp_dur_fw / comp_var_dur;
-
-                     peers[i].gps_comp.lat += comp_var_lat * comp_ratio;
-                     peers[i].gps_comp.lon += comp_var_lon * comp_ratio;
-                     peers[i].gps_comp.alt += comp_var_alt * comp_ratio;                 
-                } 
-                msp_send_radar(i);
-                delay(5);
-            }
+        if ((sys.lora_tick + 1) % 6 == 0) {
+            msp_get_fcanalog();
         }
-        stats.last_msp_duration[sys.lora_slot] = millis() - stats.timer_begin;
-        sys.msp_next_cycle += cfg.lora_slot_spacing;
-        sys.lora_slot++;
+
     }
 
-// ---------------------- STATISTICS & IO
+// msp_send_peer(sys.lora_slot);
 
-    if ((sys.now > (sys.cycle_stats + sys.stats_updated)) && (sys.phase > MODE_LORA_SYNC)) {
+// ----------------Send MSP to FC and predict new position for all nodes minus current
 
-        sys.pps = sys.ppsc;
-        sys.ppsc = 0;
+    for (int i = 0; i < cfg.lora_nodes; i++) {
+        if (peers[i].id > 0 && i+1 != curr.id ) {
+            peers[i].gps_comp.lat = peers[i].gps.lat;
+            peers[i].gps_comp.lon = peers[i].gps.lon;
+            peers[i].gps_comp.alt = peers[i].gps.alt;
 
-        // Timed-out peers + LQ
+            if (peers[i].gps.groundSpeed > 200 && peers[i].gps.lat != 0 && peers[i].gps_pre.lat != 0) { // If speed >2m/s : Compensate the position delay
+                    sys.now_sec = millis();
+                    int32_t comp_var_lat = peers[i].gps.lat - peers[i].gps_pre.lat;
+                    int32_t comp_var_lon = peers[i].gps.lon - peers[i].gps_pre.lon;
+                    int32_t comp_var_alt = peers[i].gps.alt - peers[i].gps_pre.alt;
+                    int32_t comp_var_dur = 1 + peers[i].updated - peers[i].gps_pre_updated;
+                    int32_t comp_dur_fw = (sys.now_sec - peers[i].updated);
+                    float comp_ratio = comp_dur_fw / comp_var_dur;
 
-        for (int i = 0; i < cfg.lora_nodes_max; i++) {
-
-            if (sys.now > (peers[i].lq_updated +  sys.lora_cycle * 4)) {
-                uint16_t diff = peers[i].updated - peers[i].lq_updated;
-                peers[i].lq = constrain(peers[i].lq_tick * 4.2 * sys.lora_cycle / diff, 0, 4);
-                peers[i].lq_updated = sys.now;
-                peers[i].lq_tick = 0;
+                    peers[i].gps_comp.lat += comp_var_lat * comp_ratio;
+                    peers[i].gps_comp.lon += comp_var_lon * comp_ratio;
+                    peers[i].gps_comp.alt += comp_var_alt * comp_ratio;
             }
+            msp_send_radar(i);
+            delay(7);
+        }
+    }
+    stats.last_msp_duration[sys.lora_slot] = millis() - stats.timer_begin;
+    sys.msp_next_cycle += cfg.lora_slot_spacing;
+    sys.lora_slot++;
+}
 
-            if (peers[i].id > 0 && ((sys.now - peers[i].updated) > LORA_PEER_TIMEOUT)) { // Lost for a short time
-                peers[i].lost = 1;
+// ---------------------- SERIAL BLUETOOTH
 
-                if ((sys.now - peers[i].updated) > LORA_PEER_TIMEOUT_LOST) { // Lost for a long time
-                    peers[i].lost = 2;
+if (sys.io_bt_enabled) {
+    if (SerialBT.available()) {
+        bt_incoming = SerialBT.read();
+
+        if (bt_incoming != '\n') {
+            bt_message += String(bt_incoming);
+        }
+        else {
+            bt_message = "";
+        }
+
+        Serial.write(bt_incoming);
+    }
+
+    if (bt_message) {
+        if (bt_message=="reboot") {
+            SerialBT.println("Rebooting");
+            delay(1000);
+            ESP.restart();
+        }
+        else if (bt_message=="reset") {
+            SerialBT.println("Resetting to default values");
+            config_init(1);
+            SerialBT.println("Rebooting");
+            delay(1000);
+            ESP.restart();
+        }
+        else if (bt_message=="cmd") {
+            SerialBT.println("------------");
+            SerialBT.println("info : Configuration infos");
+            SerialBT.println("band433 : Radio module is 433MHz");
+            SerialBT.println("band858 : Radio module is 858MHz");
+            SerialBT.println("band915 : Radio module is 915MHz");
+            SerialBT.println("mode0 : Lora mode " + (String)loramode_name[0]);
+            SerialBT.println("mode1 : Lora mode " + (String)loramode_name[1]);
+            SerialBT.println("mode2 : Lora mode " + (String)loramode_name[2]);
+            SerialBT.println("debug : Toggle debug mode on/off");
+            SerialBT.println("list : List active nodes");
+            SerialBT.println("reset : Reset all values to default");
+            SerialBT.println("reboot : Restarts the ESP");
+            SerialBT.println("------------");
+        }
+        else if (bt_message=="band433") {
+            SerialBT.println("Setting band : 433MHz");
+            SerialBT.println("Active after reboot");
+            cfg.lora_band = 433;
+            cfg.lora_frequency = 433375000;
+            config_save();
+        }
+        else if (bt_message=="band868") {
+            SerialBT.println("Setting band : 868MHz");
+            SerialBT.println("Active after reboot");
+            cfg.lora_band = 868;
+            cfg.lora_frequency = 868500000;
+            config_save();
+        }
+        else if (bt_message=="band915") {
+            SerialBT.println("Setting band : 915MHz");
+            SerialBT.println("Active after reboot");
+            cfg.lora_band = 915;
+            cfg.lora_frequency = 915000000;
+            config_save();
+        }
+        else if (bt_message=="mode0") {
+            SerialBT.println("Setting radio mode : " + (String)loramode_name[0]);
+            cfg.lora_mode = 0;
+            cfg.lora_bandwidth = LORA_M0_BANDWIDTH;
+            cfg.lora_coding_rate = LORA_M0_CODING_RATE;
+            cfg.lora_spreading_factor = LORA_M0_SPREADING_FACTOR;
+            cfg.lora_nodes = LORA_M0_NODES;
+            cfg.lora_slot_spacing = LORA_M0_SLOT_SPACING;
+            cfg.lora_timing_delay = LORA_M0_TIMING_DELAY;
+            cfg.msp_after_tx_delay = LORA_M0_MSP_AFTER_TX_DELAY;
+            SerialBT.println((String)cfg.lora_nodes + " nodes x " + (String)cfg.lora_slot_spacing + "ms = " + (String)(cfg.lora_nodes * cfg.lora_slot_spacing) + "ms cycle");
+            SerialBT.println("Active after reboot");
+            config_save();
+        }
+        else if (bt_message=="mode1") {
+            SerialBT.println("Setting radio mode : " + (String)loramode_name[1]);
+            cfg.lora_mode = 1;
+            cfg.lora_bandwidth = LORA_M1_BANDWIDTH;
+            cfg.lora_coding_rate = LORA_M1_CODING_RATE;
+            cfg.lora_spreading_factor = LORA_M1_SPREADING_FACTOR;
+            cfg.lora_nodes = LORA_M1_NODES;
+            cfg.lora_slot_spacing = LORA_M1_SLOT_SPACING;
+            cfg.lora_timing_delay = LORA_M1_TIMING_DELAY;
+            cfg.msp_after_tx_delay = LORA_M1_MSP_AFTER_TX_DELAY;
+            SerialBT.println((String)cfg.lora_nodes + " nodes x " + (String)cfg.lora_slot_spacing + "ms = " + (String)(cfg.lora_nodes * cfg.lora_slot_spacing) + "ms cycle");
+            SerialBT.println("Active after reboot");
+            config_save();
+        }
+        else if (bt_message=="mode2") {
+            SerialBT.println("Setting radio mode : " + (String)loramode_name[2]);
+            cfg.lora_mode = 2;
+            cfg.lora_bandwidth = LORA_M2_BANDWIDTH;
+            cfg.lora_coding_rate = LORA_M2_CODING_RATE;
+            cfg.lora_spreading_factor = LORA_M2_SPREADING_FACTOR;
+            cfg.lora_nodes = LORA_M2_NODES;
+            cfg.lora_slot_spacing = LORA_M2_SLOT_SPACING;
+            cfg.lora_timing_delay = LORA_M2_TIMING_DELAY;
+            cfg.msp_after_tx_delay = LORA_M2_MSP_AFTER_TX_DELAY;
+            SerialBT.println((String)cfg.lora_nodes + " nodes x " + (String)cfg.lora_slot_spacing + "ms = " + (String)(cfg.lora_nodes * cfg.lora_slot_spacing) + "ms cycle");
+            SerialBT.println("Active after reboot");
+            config_save();
+        }
+        else if (bt_message=="debug") {
+            if (sys.debug) { sys.debug = 0; }
+            else { sys.debug = 1;}
+        }
+        else if (bt_message=="6nodes") {
+            SerialBT.println("Setting 6 nodes max");
+            SerialBT.println("Active after reboot");
+            cfg.lora_nodes = 6;
+            config_save();
+        }
+        else if (bt_message=="info") {
+            SerialBT.println("ESP32 Radar version: " + String(cfg.version));
+            SerialBT.println("Target: " + String(cfg.target_name) + " " + String(CFG_TARGET_FULLNAME));
+            SerialBT.println("Band: " + String(cfg.lora_band)+ "MHz / Mode: " + String(loramode_name[cfg.lora_mode]));
+            SerialBT.println("Freq: " + String((float)cfg.lora_frequency / 1000000, 3)+ "MHz / Power: " + String(cfg.lora_power));
+            SerialBT.println("BW: " + String((float)cfg.lora_bandwidth / 1000, 0)+ "KHz / CR: " + String(cfg.lora_coding_rate) + " / SF: " +String(cfg.lora_spreading_factor));
+            SerialBT.println((String)cfg.lora_nodes + " nodes x " + (String)cfg.lora_slot_spacing + "ms = " + (String)(cfg.lora_nodes * cfg.lora_slot_spacing) + "ms cycle");
+        }
+        else if (bt_message=="list") {
+            for (int i = 0; i < cfg.lora_nodes; i++) {
+                if (peers[i].id > 0) {
+                    SerialBT.println((String)"[" + char(i+65) + "] " + peers[i].name + " N" + String((float)peers[i].gps_rec.lat / 10000000, 5) + " E" + String((float)peers[i].gps_rec.lon / 10000000, 5) + " " + peers[i].gps_rec.alt + "m " + String(peers[i].gps.groundSpeed / 100) + "m/s " + String(peers[i].gps.groundCourse / 10) + "° " + String((int)((sys.lora_last_tx - peers[i].updated) / 1000)) + "s " + String(peers[i].rssi) + "db");
+                }
+                if (i + 1 == curr.id) {
+                    SerialBT.println((String)"[" + char(i+65) + "] " + String(host_name[curr.host]) + " (host) N" + String((float)curr.gps.lat / 10000000, 5) + " E" + String((float)curr.gps.lon / 10000000, 5) + " " + String(curr.gps.alt) + "m Eff:" + String(stats.percent_received) + "%" );
                 }
             }
         }
+    }
+}
 
-        sys.num_peers_active = count_peers(1);
-        stats.packets_total += sys.num_peers_active * sys.cycle_stats / sys.lora_cycle;
-        stats.packets_received += sys.pps;
-        stats.percent_received = (stats.packets_received > 0) ? constrain(100 * stats.packets_received / stats.packets_total, 0 ,100) : 0;
+// ---------------------- STATISTICS & IO
 
-        // Screen management
+if ((sys.now > (sys.cycle_stats + sys.stats_updated)) && (sys.phase > MODE_LORA_SYNC)) {
+    sys.pps = sys.ppsc;
+    sys.ppsc = 0;
+    // sys.last_snr = LoRa.packetSnr();
+    // sys.last_freqerror = LoRa.packetFrequencyError();
 
-        if (!curr.state && !sys.display_enable) { // Aircraft is disarmed = Turning on the OLED
-            display.displayOn();
-            sys.display_enable = 1;
+    // Timed-out peers + LQ
+
+    for (int i = 0; i < cfg.lora_nodes; i++) {
+        if (sys.now > (peers[i].lq_updated +  sys.lora_cycle * 4)) {
+            uint16_t diff = peers[i].updated - peers[i].lq_updated;
+            peers[i].lq = constrain(peers[i].lq_tick * 4.2 * sys.lora_cycle / diff, 0, 4);
+            peers[i].lq_updated = sys.now;
+            peers[i].lq_tick = 0;
         }
-        else if (curr.state && sys.display_enable) { // Aircraft is armed = Turning off the OLED
-            display.displayOff();
-            sys.display_enable = 0;
+        if (peers[i].id > 0 && ((sys.now - peers[i].updated) > LORA_PEER_TIMEOUT)) { // Lost for a short time
+            peers[i].lost = 1;
+            if ((sys.now - peers[i].updated) > LORA_PEER_TIMEOUT_LOST) { // Lost for a long time
+                peers[i].lost = 2;
+            }
         }
+    }
+
+    sys.num_peers_active = count_peers(1);
+    stats.packets_total += sys.num_peers_active * sys.cycle_stats / sys.lora_cycle;
+    stats.packets_received += sys.pps;
+    stats.percent_received = (stats.packets_received > 0) ? constrain(100 * stats.packets_received / stats.packets_total, 0 ,100) : 0;
+
+    // Screen management
+
+    if (!curr.state && !sys.display_enable) { // Aircraft is disarmed = Turning on the OLED
+        display.displayOn();
+        sys.display_enable = 1;
+    }
+    else if (curr.state && sys.display_enable) { // Aircraft is armed = Turning off the OLED
+        display.displayOff();
+        sys.display_enable = 0;
+    }
     sys.stats_updated = sys.now;
+}
+
+// ---------------------- LED blinker
+
+if (sys.lora_tick % 6 == 0) {
+    if (sys.num_peers_active > 0) {
+        sys.io_led_changestate = millis() + IO_LEDBLINK_DURATION;
+        sys.io_led_count = 0;
+        sys.io_led_blink = 1;
+    }
+}
+
+if (sys.io_led_blink && millis() > sys.io_led_changestate) {
+
+    sys.io_led_count++;
+    sys.io_led_changestate += IO_LEDBLINK_DURATION;
+
+    if (sys.io_led_count % 2 == 0) {
+        digitalWrite(IO_LED_PIN, LOW);
+    }
+    else {
+        digitalWrite(IO_LED_PIN, HIGH);
     }
 
-    // LED blinker
-
-    if (sys.lora_tick % 6 == 0) {
-        if (sys.num_peers_active > 0) {
-            sys.io_led_changestate = millis() + IO_LEDBLINK_DURATION;
-            sys.io_led_count = 0;
-            sys.io_led_blink = 1;
-        }
-    }
-
-    if (sys.io_led_blink && millis() > sys.io_led_changestate) {
-
-        sys.io_led_count++;
-        sys.io_led_changestate += IO_LEDBLINK_DURATION;
-
-        if (sys.io_led_count % 2 == 0) {
-            digitalWrite(IO_LED_PIN, LOW);
-        }
-        else {
-            digitalWrite(IO_LED_PIN, HIGH);
-        }
-
-        if (sys.io_led_count >= sys.num_peers_active * 2) {
-            sys.io_led_blink = 0;
-        }
-
+    if (sys.io_led_count >= sys.num_peers_active * 2) {
+        sys.io_led_blink = 0;
     }
 
 }
+
+} // -----

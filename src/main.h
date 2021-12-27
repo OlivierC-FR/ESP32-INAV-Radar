@@ -1,30 +1,67 @@
+//
+// ESP32 Radar
+// Github : https://github.com/OlivierC-FR/ESP32-INAV-Radar
+// RCgroups : https://www.rcgroups.com/forums/showthread.php?3304673-iNav-Radar-ESP32-LoRa-modems
+//
+// -------------------------------------------------------------------------------------------
+
+
 // -------- GENERAL
 
-#define VERSION "2.2.1"
-#define VERSION_CONFIG 220
-#define FORCE_DEFAULT_PROFILE 1
-#define CFG_PROFILE_DEFAULT_ID 1
-// #define CFG_PROFILE_DEFAULT_NAME < (platformio.ini)
+#define VERSION "3.0.0"
+#define VERSION_CONFIG 300
+#define FORCE_DEFAULT_CONFIG 0
+#define CFG_AUTOSTART_BT 0
+#define START_DELAY 3000
+// #define CFG_TARGET_NAME < (platformio.ini)
+// #define CFG_TARGET_FULLNAME < (platformio.ini)
 
 // -------- LORA DEFAULTS
 
-#define LORA_BANDWIDTH 250000 // 250000
-#define LORA_CODING_RATE 5 // 5
-#define LORA_SPREADING_FACTOR 10 // 9
-#define LORA_POWER 20 
+#define LORA_POWER 20
+#define LORA_MODE 0
+#define LORA_AUTOMODE 0
+#define LORA_BAND 433
+#define LORA_FREQUENCY_433 433375000 // Hz
+#define LORA_FREQUENCY_868 868500000 // Hz
+#define LORA_FREQUENCY_915 915000000 // Hz
+#define LORA_NODES_MAX 6
 
-//#define LORA_FREQUENCY < (platformio.ini)
-#define LORA_NODES_MAX 4 // ------
-#define LORA_SLOT_SPACING 250
+// --- Mode 0 (Standard)
 
-#define LORA_TIMING_DELAY -160
-#define LORA_MSP_AFTER_TX_DELAY 150
+#define LORA_M0_BANDWIDTH 250000 // Hz
+#define LORA_M0_CODING_RATE 5
+#define LORA_M0_SPREADING_FACTOR 10
+#define LORA_M0_NODES 4
+#define LORA_M0_SLOT_SPACING 250 // ms
+#define LORA_M0_TIMING_DELAY -150 // ms
+#define LORA_M0_MSP_AFTER_TX_DELAY 150 // ms
+
+// --- Mode 1 (Long range)
+
+#define LORA_M1_BANDWIDTH 250000 // Hz
+#define LORA_M1_CODING_RATE 5
+#define LORA_M1_SPREADING_FACTOR 11
+#define LORA_M1_NODES 4
+#define LORA_M1_SLOT_SPACING 500 // ms
+#define LORA_M1_TIMING_DELAY -300 // ms
+#define LORA_M1_MSP_AFTER_TX_DELAY 300 // ms
+
+// --- Mode 2 (Fast)
+
+#define LORA_M2_BANDWIDTH 250000 // Hz
+#define LORA_M2_CODING_RATE 5
+#define LORA_M2_SPREADING_FACTOR 9
+#define LORA_M2_NODES 3
+#define LORA_M2_SLOT_SPACING 166 // ms
+#define LORA_M2_TIMING_DELAY -75 // ms
+#define LORA_M2_MSP_AFTER_TX_DELAY 75 // ms
 
 #define LORA_NAME_LENGTH 3
-#define LORA_CYCLE_SCAN 3000 // 3000
+#define LORA_CYCLE_SCAN 5000 // 5s
 #define LORA_PEER_TIMEOUT 6000 // 6s
 #define LORA_PEER_TIMEOUT_LOST 120000  // 2 mins
-#define LORA_DRIFT_THRESHOLD 8 // Min for action
+#define LORA_DRIFT_THRESHOLD 6 // Min for action
 #define LORA_DRIFT_CORRECTION 12 // Max to correct
 
 // --------- IO AND DISPLAY
@@ -36,19 +73,23 @@
 // -------- PHASES
 
 #define MODE_START       0
-#define MODE_MENU        1
-#define MODE_HOST_SCAN   2
-#define MODE_LORA_INIT   3
-#define MODE_LORA_SYNC   4
-#define MODE_LORA_RX     5
-#define MODE_LORA_TX     6
+#define MODE_HOST_SCAN   1
+#define MODE_LORA_SCAN   2
+#define MODE_LORA_SYNC   3
+#define MODE_LORA_RX     4
+#define MODE_LORA_TX     5
 
 // -------- HOST
 
-#define HOST_MSP_TIMEOUT 9000
+#define HOST_MSP_TIMEOUT 8000
 #define HOST_NONE 0
 #define HOST_GCS 1
 #define HOST_INAV 2
+
+// -------- BEACON
+
+// #define BEACON_TRIGGER_DELAY
+// #define BEACON_CYCLE_DELAY
 
 // -------- STRUCTURE
 
@@ -63,14 +104,14 @@ struct peer_t {
    uint8_t lq_tick;
    uint8_t lq;
    int rssi;
-   float distance; // --------- uint16_t
+   float distance;
    int16_t direction;
    int16_t relalt;
    msp_raw_gps_t gps;
    msp_raw_gps_t gps_rec;
    msp_raw_gps_t gps_pre;
    uint32_t gps_pre_updated;
-   msp_raw_gps_t gps_comp;   
+   msp_raw_gps_t gps_comp;
    msp_analog_t fcanalog;
    char name[LORA_NAME_LENGTH + 1];
    };
@@ -97,34 +138,33 @@ struct air_type0_t { // 80 bits
 
 struct config_t {
 
-    // General
-
     uint16_t version;
     uint8_t profile_id;
-    char profile_name[15];
+    char target_name[8];
 
-    // Radio
-
+    uint8_t lora_power;
+    uint16_t lora_band;
     uint32_t lora_frequency;
+
+    uint8_t lora_mode;
+    bool lora_automode;
+
     uint32_t lora_bandwidth;
     uint8_t lora_coding_rate;
     uint8_t lora_spreading_factor;
-    uint8_t lora_power;
-
-    // Timings
-
-    uint8_t lora_nodes_max;
+    uint8_t lora_nodes;
     uint16_t lora_slot_spacing;
     int16_t lora_timing_delay;
-    uint16_t msp_after_tx_delay;
+    int16_t msp_after_tx_delay;
 
     // IO & Display
 
     bool display_enable;
-
 };
 
 struct system_t {
+    bool debug;
+    bool forcereset;
     uint8_t phase;
 
     uint16_t lora_cycle;
@@ -134,6 +174,8 @@ struct system_t {
     uint32_t now_sec = 0;
     uint8_t air_last_received_id = 0;
     int last_rssi;
+    float last_snr;
+    long last_freqerror;
 
     uint8_t pps = 0;
     uint8_t ppsc = 0;
