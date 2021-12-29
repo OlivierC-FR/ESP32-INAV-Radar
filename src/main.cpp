@@ -32,10 +32,11 @@ curr_t curr;
 peer_t peers[LORA_NODES_MAX];
 air_type0_t air_0;
 
-char host_name[3][5]={"NoFC", "GCS", "INAV"};
-char host_state[2][4]={"", "ARM"};
-char peer_slotname[9][2]={"X", "A", "B", "C", "D", "E", "F", "G", "H"};
-char loramode_name[3][11]={"Standard", "Long range", "Fast"};
+char host_name[3][5] = {"NoFC", "GCS", "INAV"};
+char host_state[2][4] = {"", "ARM"};
+char peer_slotname[9][2] = {"X", "A", "B", "C", "D", "E", "F", "G", "H"};
+char loramode_name[3][11] = {"Standard", "Long range", "Fast"};
+char onoff[2][4]= {"Off", "On"};
 String bt_message = "";
 char bt_incoming;
 
@@ -49,6 +50,11 @@ void config_save() {
         char data = ((char *)&cfg)[i];
         EEPROM.write(i, data);
     }
+    EEPROM.commit();
+}
+
+void config_clear() {
+    for (int i = 0; i < 512; i++) { EEPROM.write(i, 0); }
     EEPROM.commit();
 }
 
@@ -70,7 +76,7 @@ void config_init(bool forcedefault = 0) {
         cfg.lora_band = LORA_BAND;
         cfg.lora_frequency = LORA_FREQUENCY_433;
         cfg.lora_mode = LORA_MODE;
-
+        cfg.force_gs = LORA_FORCE_GS;
         cfg.lora_bandwidth = LORA_M0_BANDWIDTH;
         cfg.lora_coding_rate = LORA_M0_CODING_RATE;
         cfg.lora_spreading_factor = LORA_M0_SPREADING_FACTOR;
@@ -348,7 +354,7 @@ void display_draw() {
             display.setFont(ArialMT_Plain_24);
             display.setTextAlignment(TEXT_ALIGN_RIGHT);
             display.drawString(26, 11, String(curr.gps.numSat));
-            display.drawString(13, 42, String(sys.num_peers_active + 1));
+            display.drawString(13, 42, String(sys.num_peers_active + 1 - sys.lora_no_tx));
             display.drawString (125, 11, String(peer_slotname[curr.id]));
             display.setFont(ArialMT_Plain_10);
             display.drawString (126, 29, "_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ");
@@ -635,9 +641,7 @@ void IRAM_ATTR handleInterrupt() {
             sys.io_bt_enabled = 1; // Enable the Bluetooth if button pressed during host scan or lora scan
         }
         else if (sys.phase == MODE_START) {
-            for (int i = 0; i < 512; i++) { EEPROM.write(i, 0); }
-            EEPROM.commit();
-            delay(500);
+            sys.forcereset = 1;
         }
         sys.io_button_released = millis();
     }
@@ -705,7 +709,6 @@ void setup() {
     sys.cycle_scan_begin = millis();
     sys.now = millis();
     curr.host = HOST_NONE;
-    sys.phase = MODE_HOST_SCAN;
 }
 
 // ----------------------------------------------------------------------------- MAIN LOOP
@@ -718,6 +721,24 @@ sys.now = millis();
 
 if ((sys.now > sys.io_button_released + 150) && (sys.io_button_pressed == 1)) {
     sys.io_button_pressed = 0;
+}
+
+// ---------------------- HOST SCAN
+
+if (sys.phase == MODE_START) {
+
+    if (sys.forcereset) {
+        display.clear();
+        display.setFont(ArialMT_Plain_10);
+        display.setTextAlignment(TEXT_ALIGN_LEFT);
+        display.drawString (0, 0, "FULL RESET");
+        display.drawString (0, 12, "Rebooting...");
+        display.display();
+        config_clear();
+        delay(3000);
+        ESP.restart();
+    }
+    sys.phase = MODE_HOST_SCAN;
 }
 
 // ---------------------- HOST SCAN
@@ -767,6 +788,7 @@ if (sys.phase == MODE_HOST_SCAN) {
         if (sys.now > sys.display_updated + DISPLAY_CYCLE / 2) {
             delay(100);
             msp_set_fc();
+            if (cfg.force_gs) { curr.host = HOST_GCS; }
 
             if (cfg.display_enable) {
                 display.drawProgressBar(0, 0, 63, 6, 100 * (millis() - sys.cycle_scan_begin) / HOST_MSP_TIMEOUT);
@@ -998,12 +1020,13 @@ if (sys.io_bt_enabled) {
             SerialBT.println("------------");
             SerialBT.println("info : Configuration infos");
             SerialBT.println("band433 : Radio module is 433MHz");
-            SerialBT.println("band858 : Radio module is 858MHz");
+            SerialBT.println("band868 : Radio module is 868MHz");
             SerialBT.println("band915 : Radio module is 915MHz");
             SerialBT.println("mode0 : Lora mode " + (String)loramode_name[0]);
             SerialBT.println("mode1 : Lora mode " + (String)loramode_name[1]);
             SerialBT.println("mode2 : Lora mode " + (String)loramode_name[2]);
-            SerialBT.println("debug : Toggle debug mode on/off");
+            SerialBT.println("debug : Toggle debug mode");
+            SerialBT.println("gs : Toggle ground station mode");
             SerialBT.println("list : List active nodes");
             SerialBT.println("reset : Reset all values to default");
             SerialBT.println("reboot : Restarts the ESP");
@@ -1076,6 +1099,13 @@ if (sys.io_bt_enabled) {
             if (sys.debug) { sys.debug = 0; }
             else { sys.debug = 1;}
         }
+        else if (bt_message=="gs") {
+            if (cfg.force_gs) { cfg.force_gs = 0; }
+            else { cfg.force_gs = 1; }
+            SerialBT.println("Ground station mode: " + (String)onoff[cfg.force_gs]);
+            SerialBT.println("Active after reboot");
+            config_save();
+        }
         else if (bt_message=="6nodes") {
             SerialBT.println("Setting 6 nodes max");
             SerialBT.println("Active after reboot");
@@ -1089,6 +1119,7 @@ if (sys.io_bt_enabled) {
             SerialBT.println("Freq: " + String((float)cfg.lora_frequency / 1000000, 3)+ "MHz / Power: " + String(cfg.lora_power));
             SerialBT.println("BW: " + String((float)cfg.lora_bandwidth / 1000, 0)+ "KHz / CR: " + String(cfg.lora_coding_rate) + " / SF: " +String(cfg.lora_spreading_factor));
             SerialBT.println((String)cfg.lora_nodes + " nodes x " + (String)cfg.lora_slot_spacing + "ms = " + (String)(cfg.lora_nodes * cfg.lora_slot_spacing) + "ms cycle");
+            SerialBT.println("Ground station mode: " + (String)onoff[cfg.force_gs]);
         }
         else if (bt_message=="list") {
             for (int i = 0; i < cfg.lora_nodes; i++) {

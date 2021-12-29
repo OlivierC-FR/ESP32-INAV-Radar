@@ -8,11 +8,11 @@
 
 // -------- GENERAL
 
-#define VERSION "3.0.0"
-#define VERSION_CONFIG 300
+#define VERSION "3.0.1"
+#define VERSION_CONFIG 301
 #define FORCE_DEFAULT_CONFIG 0
 #define CFG_AUTOSTART_BT 0
-#define START_DELAY 3000
+#define START_DELAY 2500
 // #define CFG_TARGET_NAME < (platformio.ini)
 // #define CFG_TARGET_FULLNAME < (platformio.ini)
 
@@ -21,6 +21,7 @@
 #define LORA_POWER 20
 #define LORA_MODE 0
 #define LORA_AUTOMODE 0
+#define LORA_FORCE_GS 0
 #define LORA_BAND 433
 #define LORA_FREQUENCY_433 433375000 // Hz
 #define LORA_FREQUENCY_868 868500000 // Hz
@@ -57,6 +58,8 @@
 #define LORA_M2_TIMING_DELAY -75 // ms
 #define LORA_M2_MSP_AFTER_TX_DELAY 75 // ms
 
+// --- All modes common
+
 #define LORA_NAME_LENGTH 3
 #define LORA_CYCLE_SCAN 5000 // 5s
 #define LORA_PEER_TIMEOUT 6000 // 6s
@@ -81,7 +84,7 @@
 
 // -------- HOST
 
-#define HOST_MSP_TIMEOUT 8000
+#define HOST_MSP_TIMEOUT 8500
 #define HOST_NONE 0
 #define HOST_GCS 1
 #define HOST_INAV 2
@@ -148,6 +151,7 @@ struct config_t {
 
     uint8_t lora_mode;
     bool lora_automode;
+    bool force_gs;
 
     uint32_t lora_bandwidth;
     uint8_t lora_coding_rate;
