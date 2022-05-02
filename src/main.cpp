@@ -74,7 +74,7 @@ void config_init(bool forcedefault = 0) {
         strcpy(cfg.target_name, CFG_TARGET_NAME);
         cfg.lora_power = LORA_POWER;
         cfg.lora_band = LORA_BAND;
-        cfg.lora_frequency = LORA_FREQUENCY_433;
+        cfg.lora_frequency = LORA_FREQUENCY;
         cfg.lora_mode = LORA_MODE;
         cfg.force_gs = LORA_FORCE_GS;
         cfg.lora_bandwidth = LORA_M0_BANDWIDTH;
@@ -1036,21 +1036,21 @@ if (sys.io_bt_enabled) {
             SerialBT.println("Setting band : 433MHz");
             SerialBT.println("Active after reboot");
             cfg.lora_band = 433;
-            cfg.lora_frequency = 433375000;
+            cfg.lora_frequency = LORA_FREQUENCY_433;
             config_save();
         }
         else if (bt_message=="band868") {
             SerialBT.println("Setting band : 868MHz");
             SerialBT.println("Active after reboot");
             cfg.lora_band = 868;
-            cfg.lora_frequency = 868500000;
+            cfg.lora_frequency = LORA_FREQUENCY_868;
             config_save();
         }
         else if (bt_message=="band915") {
             SerialBT.println("Setting band : 915MHz");
             SerialBT.println("Active after reboot");
             cfg.lora_band = 915;
-            cfg.lora_frequency = 915000000;
+            cfg.lora_frequency = LORA_FREQUENCY_915;
             config_save();
         }
         else if (bt_message=="mode0") {

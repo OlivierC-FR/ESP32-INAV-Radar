@@ -8,8 +8,8 @@
 
 // -------- GENERAL
 
-#define VERSION "3.0.1"
-#define VERSION_CONFIG 301
+#define VERSION "3.0.2"
+#define VERSION_CONFIG 302
 #define FORCE_DEFAULT_CONFIG 0
 #define CFG_AUTOSTART_BT 0
 #define START_DELAY 2500
@@ -22,7 +22,8 @@
 #define LORA_MODE 0
 #define LORA_AUTOMODE 0
 #define LORA_FORCE_GS 0
-#define LORA_BAND 433
+// #define LORA_BAND 433 < (platformio.ini)
+// #define LORA_FREQUENCY 433375000 < (platformio.ini)
 #define LORA_FREQUENCY_433 433375000 // Hz
 #define LORA_FREQUENCY_868 868500000 // Hz
 #define LORA_FREQUENCY_915 915000000 // Hz
